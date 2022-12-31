@@ -58,3 +58,8 @@ manager.on("UserLeftGiveaway", (member, data) => {
 
 ## For Slash
 #### Just you have to send the interaction as a message.
+
+
+# Bugs, glitches and issues
+
+If you encounter any problems feel free to open an issue in our <a href="https://github.com/kabirsingh2004/@real@giveaways/issues">GitHub repository</a> or join the [Discord server](https://discord.gg/PcUVWApWN3).
