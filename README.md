@@ -1,9 +1,16 @@
 # Real-Giveaway
 Advance discord giveaways system with Support Slash/Message support
 
-## Get Started
+# Download
 
-### Client values
+```cli
+npm i @real/giveaways
+------ or ---------------------
+yarn add @real/giveaways
+```
+# Setting up
+
+## Client values
 ```js
 const GiveawaySystem = require("@real/giveaways");
 const Discord = require('discord.js');
@@ -14,7 +21,7 @@ client.ManagerGiveaway = new GiveawaySystem(this, {
     });
 ```
 
-#### For Message commands
+## For Message commands
 
 ```js
 manager.on("GiveawayReady", () => {
@@ -49,6 +56,5 @@ manager.on("UserLeftGiveaway", (member, data) => {
 });
 ```
 
-### For Slash
-
+## For Slash
 #### Just you have to send the interaction as a message.
