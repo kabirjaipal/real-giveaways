@@ -1,7 +1,7 @@
 {
-  "name": "real-giveaways",
+  "name": "@real/giveaways",
   "version": "1.0.0",
-  "description": "real giveaway system",
+  "description": "Real giveaway system",
   "main": "index.js",
   "scripts": {
     "start": "node ."
