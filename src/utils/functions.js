@@ -39,13 +39,11 @@ async function fetchGCM(manager, messageId) {
     manager.client.guilds.cache.get(giveaway.guildId) ||
     (await manager.client.guilds.fetch(giveaway.guildId));
   if (!guild) return;
-  let channel =
-    guild.channels.cache.get(giveaway.channelId) ||
-    (await guild.channels.fetch(giveaway.channelId));
+  let channel = guild.channels.cache.get(giveaway.channelId) || 
+    await guild.channels.fetch(giveaway.channelId).catch(e => null)
   if (!channel) return;
-  let message =
-    channel.messages.cache.get(giveaway.messageId) ||
-    (await channel.messages.fetch(giveaway.messageId));
+  let message = channel.messages.cache.get(giveaway.messageId) || 
+  await channel.messages.fetch(giveaway.messageId).catch(e => null)
   if (!message) return;
   return {
     guild,
