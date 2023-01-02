@@ -43,7 +43,6 @@ async function fetchGCM(manager, messageId) {
   let message = channel.messages.cache.get(giveaway.messageId) ||
     await channel?.messages.fetch(giveaway.messageId).catch(e => null)
   if (!message) return;
-  console.log(message)
   if(channel && message && guild) {
     return guild, channel, message
   } else {
