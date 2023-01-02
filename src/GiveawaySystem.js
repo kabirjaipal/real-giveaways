@@ -60,23 +60,25 @@ class GiveawaySystem extends EventEmitter {
         if (!db) return;
         db.map(async (data) => {
           if (!data) return;
-          const { message } = await fetchGCM(this, data.messageId);
-          this.giveaway = new Giveaway(this, {
-            messageId: data.messageId,
-            channelId: data.channelId,
-            guildId: data.guildId,
-            prize: data.prize,
-            started: data.started,
-            entry: data.entry,
-            entered: data.entered,
-            winCount: data.winCount,
-            endTime: data.endTime,
-            host: data.host,
-            ended: data.ended,
-            message: message,
-          });
-          if (!data.ended) {
-            await this.checkWinner(message);
+          const loaded_Data = await fetchGCM(this, data.messageId);
+          if (loaded_Data) {
+            this.giveaway = new Giveaway(this, {
+              messageId: data.messageId,
+              channelId: data.channelId,
+              guildId: data.guildId,
+              prize: data.prize,
+              started: data.started,
+              entry: data.entry,
+              entered: data.entered,
+              winCount: data.winCount,
+              endTime: data.endTime,
+              host: data.host,
+              ended: data.ended,
+              message: loaded_Data.message,
+            });
+            if (!data.ended) {
+              await this.checkWinner(loaded_Data.message);
+            }
           }
         });
       });
@@ -182,8 +184,8 @@ class GiveawaySystem extends EventEmitter {
   async handleInteraction(interaction) {
     // code
     if (interaction.isButton()) {
-      await interaction?.deferUpdate().catch((e) => {});
-      await interaction?.deferReply().catch((e) => {});
+      await interaction?.deferUpdate().catch((e) => { });
+      await interaction?.deferReply().catch((e) => { });
       const { member } = interaction;
       switch (interaction.customId) {
         case "join_btn":
@@ -416,7 +418,7 @@ class GiveawaySystem extends EventEmitter {
           deleted++;
           await data.delete();
         })
-        .catch((e) => {});
+        .catch((e) => { });
     });
     await this.getGiveaways();
     return deleted;
@@ -446,7 +448,7 @@ class GiveawaySystem extends EventEmitter {
   async deleteGiveaway(messageId) {
     // code
     const { channel, message, guild } = await fetchGCM(this, messageId);
-    await message?.delete().catch((e) => {});
+    await message?.delete().catch((e) => { });
     if (!guild) return;
     let data = await GModel.deleteOne({ messageId: messageId });
     if (!data) return false;
