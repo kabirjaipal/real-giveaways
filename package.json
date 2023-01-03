@@ -1,20 +1,18 @@
 {
-  "name": "realgiveaways",
+  "name": "real-giveaways",
   "version": "1.0.0",
-  "description": "Real giveaway system",
+  "description": "real giveaway system",
   "main": "index.js",
   "scripts": {
     "start": "node ."
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/kabirsingh2004/node-dall-ai.git"
+    "url": "https://github.com/kabirsingh2004/discord-giveaways.git"
   },
   "author": "kabirsingh2004",
   "license": "ISC",
   "dependencies": {
-    "@joshdb/core": "^1.2.7",
-    "@joshdb/json": "^1.0.5",
     "discord.js": "^14.7.1",
     "mongoose": "^6.8.2",
     "ms": "^2.1.3"
