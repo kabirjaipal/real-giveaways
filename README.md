@@ -55,12 +55,6 @@ client.on("interactionCreate", async (interaction) => {
               prize: prize,
               winnerCount: winnerCount,
             })
-            .then(async () => {
-              interaction.followUp({
-                content: `Giveaway Started`,
-                ephemeral: true,
-              });
-            })
             .catch((e) => {
               console.log(e);
             });
