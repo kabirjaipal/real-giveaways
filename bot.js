@@ -4,6 +4,7 @@ const {
   ApplicationCommandType,
   ApplicationCommandOptionType,
   Colors,
+  EmbedBuilder,
 } = require("discord.js");
 const mongoose = require("mongoose");
 const GiveawaySystem = require("./src/GiveawaySystem");
@@ -19,6 +20,7 @@ const client = new Client({
 
 const manager = new GiveawaySystem(client, {
   embedColor: Colors.Blurple,
+  pingEveryone: true,
 });
 
 client.on("ready", () => {
@@ -101,19 +103,16 @@ client.on("interactionCreate", async (interaction) => {
           const prize = interaction.options.getString("prize");
           const winnerCount = interaction.options.getNumber("winnercount");
           const duration = interaction.options.getString("duration");
-
+          interaction.followUp({
+            content: `Giveaway Started`,
+            ephemeral: true,
+          });
           manager
             .start(interaction, {
               channel: channel,
               duration: duration,
               prize: prize,
               winnerCount: winnerCount,
-            })
-            .then(async () => {
-              interaction.followUp({
-                content: `Giveaway Started`,
-                ephemeral: true,
-              });
             })
             .catch((e) => {
               console.log(e);
@@ -151,14 +150,14 @@ manager.on("GiveawayStarted", (message, giveaway) => {
   // console.log("GiveawayStarted");
   message.reply(`Giveaway Started`);
 });
-manager.on("GiveawayWinner", (message, winners, giveaway) => {
+manager.on("GiveawayWinner", (message, giveaway) => {
   // console.log("GiveawayWinner");
-  let Gwinners = winners.map((winner) => `<@${winner.userID}>`);
+  let Gwinners = giveaway.winners.map((winner) => `<@${winner.userID}>`);
   message.channel.send(
-    `${Gwinners} Won The \`${giveaway.prize}\` Giveaway Prize. Hosted By <@${giveaway.host}>`
+    `${Gwinners} Won The \`${giveaway.prize}\` Giveaway Prize. Hosted By <@${giveaway.hostedBy}>`
   );
 
-  winners.map(async (user) => {
+  giveaway.winners.map(async (user) => {
     const u = await message.guild.members.fetch(user.userID);
     u.send(`You Won The Giveaway ${message.url}`);
   });
