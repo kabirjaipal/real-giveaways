@@ -16,8 +16,7 @@ const mongoose = require("mongoose");
 const joinBtn = new ButtonBuilder()
   .setCustomId("join_btn")
   .setStyle(ButtonStyle.Success)
-  .setEmoji("🎁")
-  .setLabel("Join");
+  .setEmoji("1059881434430578688")
 
 class GiveawaySystem extends EventEmitter {
   /**
