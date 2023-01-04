@@ -69,7 +69,7 @@ class GiveawaySystem extends EventEmitter {
           const { message } = await fetchGCM(
             this.client,
             this.giveaways,
-            data.messageId
+            data?.messageId
           );
           if (!message) return;
           this.giveaway = new Giveaway(this, {
