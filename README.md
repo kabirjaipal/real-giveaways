@@ -26,8 +26,30 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
+// for custom embed
+// class CustomManager extends GiveawaySystem {
+//   GiveawayStartEmbed(giveaway) {
+//     let embed = new EmbedBuilder().setTitle(`Giveway Started`);
+//     return embed;
+//   }
+//   GiveawayEndNoWinnerEmbed(giveaway) {
+//     let embed = new EmbedBuilder().setTitle(`Giveway Ended No Winner`);
+//     return embed;
+//   }
+//   GiveawayEndWinnerEmbed(giveaway) {
+//     let embed = new EmbedBuilder().setTitle(`Giveway Ended Winners`);
+//     return embed;
+//   }
+// }
+
+// const manager = new CustomManager(client, {
+//   embedColor: Colors.Blurple,
+//   pingEveryone: true,
+// });
+
 const manager = new GiveawaySystem(client, {
   embedColor: Colors.Blurple,
+  pingEveryone: true,
 });
 ```
 
@@ -95,14 +117,14 @@ manager.on("GiveawayStarted", (message, giveaway) => {
   // console.log("GiveawayStarted");
   message.reply(`Giveaway Started`);
 });
-manager.on("GiveawayWinner", (message, winners, giveaway) => {
+manager.on("GiveawayWinner", (message, giveaway) => {
   // console.log("GiveawayWinner");
-  let Gwinners = winners.map((winner) => `<@${winner.userID}>`);
+  let Gwinners = giveaway.winners.map((winner) => `<@${winner.userID}>`);
   message.channel.send(
-    `${Gwinners} Won The \`${giveaway.prize}\` Giveaway Prize. Hosted By <@${giveaway.host}>`
+    `${Gwinners} Won The \`${giveaway.prize}\` Giveaway Prize. Hosted By <@${giveaway.hostedBy}>`
   );
 
-  winners.map(async (user) => {
+  giveaway.winners.map(async (user) => {
     const u = await message.guild.members.fetch(user.userID);
     u.send(`You Won The Giveaway ${message.url}`);
   });
