@@ -39,6 +39,7 @@ class GiveawaySystem extends EventEmitter {
       });
     });
     this.client.on("interactionCreate", async (interaction) => {
+      if (!interaction.inGuild()) return;
       await this.handleInteraction(interaction);
     });
   }
