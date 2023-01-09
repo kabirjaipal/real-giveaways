@@ -10,9 +10,13 @@ npm i git+https://github.com/kabirsingh2004/discord-giveaways
 yarn add git+https://github.com/kabirsingh2004/discord-giveaways
 ```
 
+# Example 
+
+***<p style="text-align: center;">[![Example](https://cdn.discordapp.com/attachments/1047177505901133946/1062019460438949969/image.png)](https://discord.gg/TY55HZezsC)</p>*** 
+
 # Setting up
 
-## Client values
+### Client values
 
 ```js
 const GiveawaySystem = require("@real/giveaways");
@@ -32,7 +36,7 @@ const manager = new CustomManager(client, {
 });
 ```
 
-## For custom embed
+### For custom embed
 ```js
 class CustomManager extends GiveawaySystem {
   GiveawayStartEmbed(giveaway) {
@@ -49,12 +53,7 @@ class CustomManager extends GiveawaySystem {
   }
 }
 ```
-
-# Example 
-
-***<p style="text-align: center;">[![Example](https://cdn.discordapp.com/attachments/1047177505901133946/1062019460438949969/image.png)](https://discord.gg/TY55HZezsC)</p>*** 
-
-## Commands
+### Commands
 
 ```js
 client.on("interactionCreate", async (interaction) => {
@@ -108,7 +107,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 ```
 
-## Manager Events
+### Manager Events
 
 ```js
 manager.on("GiveawayReady", (name) => {
@@ -148,6 +147,6 @@ manager.on("UserLeftGiveaway", (member, giveaway) => {
 });
 ```
 
-# Bugs, glitches and issues
+### Bugs, glitches and issues
 
 If you encounter any problems feel free to open an issue in our <a href="https://github.com/kabirsingh2004/@real@giveaways/issues">GitHub repository</a> or join the [Discord server](https://discord.gg/PcUVWApWN3).
