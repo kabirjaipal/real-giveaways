@@ -12,6 +12,12 @@
   },
   "author": "kabirsingh2004",
   "license": "ISC",
+  "keywords": [
+    "real",
+    "realgiveaway",
+    "discordgiveaways",
+    "discord-giveaways"
+  ],
   "dependencies": {
     "discord.js": "^14.7.1",
     "mongoose": "^6.8.2",

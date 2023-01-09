@@ -26,32 +26,33 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
-// for custom embed
-// class CustomManager extends GiveawaySystem {
-//   GiveawayStartEmbed(giveaway) {
-//     let embed = new EmbedBuilder().setTitle(`Giveway Started`);
-//     return embed;
-//   }
-//   GiveawayEndNoWinnerEmbed(giveaway) {
-//     let embed = new EmbedBuilder().setTitle(`Giveway Ended No Winner`);
-//     return embed;
-//   }
-//   GiveawayEndWinnerEmbed(giveaway) {
-//     let embed = new EmbedBuilder().setTitle(`Giveway Ended Winners`);
-//     return embed;
-//   }
-// }
-
-// const manager = new CustomManager(client, {
-//   embedColor: Colors.Blurple,
-//   pingEveryone: true,
-// });
-
-const manager = new GiveawaySystem(client, {
+const manager = new CustomManager(client, {
   embedColor: Colors.Blurple,
   pingEveryone: true,
 });
 ```
+
+## For custom embed
+```js
+class CustomManager extends GiveawaySystem {
+  GiveawayStartEmbed(giveaway) {
+    let embed = new EmbedBuilder().setTitle(`Giveway Started`);
+    return embed;
+  }
+  GiveawayEndNoWinnerEmbed(giveaway) {
+    let embed = new EmbedBuilder().setTitle(`Giveway Ended No Winner`);
+    return embed;
+  }
+  GiveawayEndWinnerEmbed(giveaway) {
+    let embed = new EmbedBuilder().setTitle(`Giveway Ended Winners`);
+    return embed;
+  }
+}
+```
+
+# Example 
+
+***<p style="text-align: center;">[![Example](https://cdn.discordapp.com/attachments/1047177505901133946/1062019460438949969/image.png)](https://discord.gg/TY55HZezsC)</p>*** 
 
 ## Commands
 
