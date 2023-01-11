@@ -2,7 +2,7 @@
   "name": "real-giveaways",
   "version": "1.0.0",
   "description": "real giveaway system",
-  "main": "index.js",
+  "main": "bot.js",
   "scripts": {
     "start": "node ."
   },
@@ -12,15 +12,10 @@
   },
   "author": "kabirsingh2004",
   "license": "ISC",
-  "keywords": [
-    "real",
-    "realgiveaway",
-    "discordgiveaways",
-    "discord-giveaways"
-  ],
   "dependencies": {
     "discord.js": "^14.7.1",
-    "mongoose": "^6.8.2",
+    "dotenv": "^16.0.3",
+    "mongoose": "^6.8.3",
     "ms": "^2.1.3"
   }
 }

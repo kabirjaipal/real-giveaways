@@ -41,28 +41,26 @@ class Giveaway {
     return this.entered;
   }
 
-  async end() {
+  async end(messageId) {
     // code
-    if (this.ended) return false;
-    const giveaway = await this.manager.getWinner(this.message, this.messageId);
+    const gdata = this.manager.giveaways.find((g) => g.messageId == messageId);
+    if (gdata?.ended) return false;
+    const giveaway = await this.manager.getWinner(this.message, messageId);
     return giveaway;
   }
 
-  async reroll() {
+  async reroll(messageId) {
     setTimeout(async () => {
-      const giveaway = await this.manager.getWinner(
-        this.message,
-        this.messageId
-      );
+      const giveaway = await this.manager.getWinner(this.message, messageId);
       this.manager.emit("GiveawayRerolled", this.message, this);
       return giveaway;
     }, 1000 * 15);
   }
 
-  async edit(prize, winCount) {
+  async edit(messageId, prize, winCount) {
     // code
     const data = await GModel.findOne({
-      messageId: this.messageId,
+      messageId: messageId,
       ended: false,
     });
     if (!data) return false;
@@ -72,14 +70,9 @@ class Giveaway {
     return data;
   }
 
-  async delete() {
+  async delete(messageId) {
     // code
-    const data = await GModel.deleteOne({ messageId: this.messageId });
-    if (data) {
-      return true;
-    } else {
-      return false;
-    }
+    return await this.manager.deleteGiveaway(messageId);
   }
 }
 

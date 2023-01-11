@@ -1,3 +1,4 @@
+require("dotenv").config();
 const {
   Client,
   GatewayIntentBits,
@@ -18,10 +19,34 @@ const client = new Client({
   ],
 });
 
+// for custom embed
+// class CustomManager extends GiveawaySystem {
+//   GiveawayStartEmbed(giveaway) {
+//     let embed = new EmbedBuilder().setTitle(`Giveway Started`);
+//     return embed;
+//   }
+//   GiveawayEndNoWinnerEmbed(giveaway) {
+//     let embed = new EmbedBuilder().setTitle(`Giveway Ended No Winner`);
+//     return embed;
+//   }
+//   GiveawayEndWinnerEmbed(giveaway) {
+//     let embed = new EmbedBuilder().setTitle(`Giveway Ended Winners`);
+//     return embed;
+//   }
+// }
+
+// const manager = new CustomManager(client, {
+//   embedColor: Colors.Blurple,
+//   pingEveryone: true,
+// });
+
 const manager = new GiveawaySystem(client, {
   embedColor: Colors.Blurple,
-  pingEveryone: true,
+  pingEveryone: false,
+  emoji: "🎁",
 });
+
+mongoose.set("strictQuery", false);
 
 client.on("ready", () => {
   console.log("Online");
@@ -75,6 +100,11 @@ client.on("ready", () => {
       description: `delete all`,
       type: ApplicationCommandType.ChatInput,
     },
+    {
+      name: "ping",
+      description: `check bot ping`,
+      type: ApplicationCommandType.ChatInput,
+    },
   ];
   client.application.commands.set(commands);
 
@@ -86,12 +116,10 @@ client.on("ready", () => {
     .then(() => {
       console.log(`Mongodb connected`);
     });
-
-  mongoose.set("strictQuery", false);
 });
 
 client.on("interactionCreate", async (interaction) => {
-  await interaction.deferReply().catch((e) => {});
+  await interaction.deferReply({ ephemeral: true }).catch((e) => {});
 
   if (interaction.isChatInputCommand()) {
     // code
@@ -121,18 +149,26 @@ client.on("interactionCreate", async (interaction) => {
         break;
       case "deleteall":
         {
-          const deleteall = await manager.deleteall(interaction.guildId);
+          const data = await manager.deleteall(interaction.guildId);
           interaction.followUp({
-            content: `${deleteall} Giveaways Deleted`,
+            content: `${data?.deleted} Giveaways Deleted`,
           });
         }
         break;
       case "delete":
         {
-          let messageId = interaction.options.getString("messageid");
-          await manager.delete(messageId);
+          let messageId = interaction.options.getString("messageid", true);
+          let deleted = await manager.giveaway.delete(messageId);
           interaction.followUp({
-            content: `Giveaways Deleted`,
+            content: `Giveaway ${deleted ? "Deleted" : "Not Deleted"}`,
+          });
+        }
+        break;
+      case "ping":
+        {
+          return interaction.followUp({
+            content: `Pong :: \`${client.ws.ping}\``,
+            ephemeral: true,
           });
         }
         break;
@@ -143,40 +179,68 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
+let embed = new EmbedBuilder().setColor("Blurple");
+
 manager.on("GiveawayReady", (name) => {
   console.log(`${name} is Ready`);
 });
 manager.on("GiveawayStarted", (message, giveaway) => {
   // console.log("GiveawayStarted");
-  message.reply(`Giveaway Started`);
+  message.reply({
+    embeds: [embed.setDescription(`Giveaway Started`)],
+  });
 });
 manager.on("GiveawayWinner", (message, giveaway) => {
   // console.log("GiveawayWinner");
-  let Gwinners = giveaway.winners.map((winner) => `<@${winner.userID}>`);
-  message.channel.send(
-    `${Gwinners} Won The \`${giveaway.prize}\` Giveaway Prize. Hosted By <@${giveaway.hostedBy}>`
-  );
+  let Gwinners = giveaway.winners
+    .map((winner) => `<@${winner.userID}>`)
+    .join(", ");
+
+  message.channel.send({
+    content: Gwinners,
+    embeds: [
+      embed.setDescription(
+        `${Gwinners} Won The \`${giveaway.prize}\` Giveaway Prize. Hosted By <@${giveaway.hostedBy}>`
+      ),
+    ],
+  });
 
   giveaway.winners.map(async (user) => {
     const u = await message.guild.members.fetch(user.userID);
-    u.send(`You Won The Giveaway ${message.url}`);
+    u.send({
+      embeds: [
+        embed.setDescription(
+          `You Won The Giveaway [\`Giveaway Link\`](${message.url})`
+        ),
+      ],
+    });
   });
 });
 manager.on("GiveawayRerolled", (message, giveaway) => {
   // console.log("GiveawayRerolled");
-  message.reply(`\`${giveaway.prize}\` Giveaway Rerolled`);
+  message.reply({
+    embeds: [embed.setDescription(`\`${giveaway.prize}\` Giveaway Rerolled`)],
+  });
 });
 manager.on("NoWinner", (message, giveaway) => {
-  message.reply(`No One Won ${giveaway.prize}`);
+  message.reply({
+    embeds: [embed.setDescription(`No One Won ${giveaway.prize}`)],
+  });
 });
 manager.on("InvalidGiveaway", (member, giveaway) => {
-  member.send(`You are Joining in Ended Giveaway`);
+  member.send({
+    embeds: [embed.setDescription(`You are Joining in Ended Giveaway`)],
+  });
 });
 manager.on("UserJoinGiveaway", (member, giveaway) => {
-  member.send(`You Joined ${giveaway.prize} Giveaway`);
+  member.send({
+    embeds: [embed.setDescription(`You Joined ${giveaway.prize} Giveaway`)],
+  });
 });
 manager.on("UserLeftGiveaway", (member, giveaway) => {
-  member.send(`You Left ${giveaway.prize} Giveaway`);
+  member.send({
+    embeds: [embed.setDescription(`You Left ${giveaway.prize} Giveaway`)],
+  });
 });
 
 client.login(process.env.token);

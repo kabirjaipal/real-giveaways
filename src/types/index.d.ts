@@ -1,8 +1,9 @@
-import { Channel, GuildMember, Message } from "discord.js";
+import { Channel, Emoji, GuildMember, Message } from "discord.js";
 
 export interface ManagerOptions {
   embedColor: string;
   pingEveryone: boolean;
+  emoji: Emoji;
 }
 
 export interface GiveawayStartOptions {
