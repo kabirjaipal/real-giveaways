@@ -13,15 +13,12 @@ async function fetchGCM(client, giveaways, messageId) {
   if (!giveaway) return;
   let guild = client.guilds.cache.get(giveaway.guildId);
   if (!guild) {
-    await client.guilds.fetch(giveaway.guildId).catch((e) => {});
+    guild = await client.guilds.fetch(giveaway.guildId).catch((e) => { });
   }
-  let channel = guild.channels.cache.get(giveaway.channelId);
-  if (!channel) {
-   channel = await guild.channels.fetch(giveaway.channelId).catch((e) => {});
-  }
-  let message = channel.messages.cache.get(giveaway.messageId);
+  let channel = guild?.channels.cache.get(giveaway.channelId) || await guild.channels.fetch(giveaway.channelId).catch((e) => { });
+  let message = channel?.messages.cache.get(giveaway.messageId);
   if (!message) {
-    await channel.messages.fetch(giveaway.messageId).catch((e) => {});
+    await channel?.messages.fetch(giveaway.messageId).catch((e) => { });
   }
   let obj = {};
   if (message && channel && guild) {
@@ -45,7 +42,7 @@ async function editEmbed(message, giveawaydata, embed) {
       embeds: [embed],
       components: [],
     })
-    .catch((e) => {});
+    .catch((e) => { });
 }
 
 function createGiveaway(data) {
