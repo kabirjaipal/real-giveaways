@@ -17,7 +17,7 @@ async function fetchGCM(client, giveaways, messageId) {
   }
   let channel = guild.channels.cache.get(giveaway.channelId);
   if (!channel) {
-    await guild.channels.fetch(giveaway.channelId).catch((e) => {});
+   channel = await guild.channels.fetch(giveaway.channelId).catch((e) => {});
   }
   let message = channel.messages.cache.get(giveaway.messageId);
   if (!message) {
