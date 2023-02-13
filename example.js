@@ -7,8 +7,7 @@ const {
   Colors,
   EmbedBuilder,
 } = require("discord.js");
-const mongoose = require("mongoose");
-const GiveawaySystem = require("./src/GiveawaySystem");
+const { Manager } = require("real-giveaways");
 
 const client = new Client({
   intents: [
@@ -19,8 +18,8 @@ const client = new Client({
   ],
 });
 
-// for custom embed
-// class CustomManager extends GiveawaySystem {
+// // for custom embed
+// class CustomManager extends Manager {
 //   GiveawayStartEmbed(giveaway) {
 //     let embed = new EmbedBuilder().setTitle(`Giveway Started`);
 //     return embed;
@@ -40,13 +39,11 @@ const client = new Client({
 //   pingEveryone: true,
 // });
 
-const manager = new GiveawaySystem(client, {
+const manager = new Manager(client, {
   embedColor: Colors.Blurple,
   pingEveryone: false,
   emoji: "🎁",
 });
-
-mongoose.set("strictQuery", false);
 
 client.on("ready", () => {
   console.log("Online");
@@ -54,6 +51,57 @@ client.on("ready", () => {
     {
       name: "delete",
       description: `delete giveaway`,
+      type: ApplicationCommandType.ChatInput,
+      options: [
+        {
+          name: "messageid",
+          description: `give message id of giveaway`,
+          type: ApplicationCommandOptionType.String,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "edit",
+      description: `edit giveaway`,
+      type: ApplicationCommandType.ChatInput,
+      options: [
+        {
+          name: "messageid",
+          description: `give message id of giveaway`,
+          type: ApplicationCommandOptionType.String,
+          required: true,
+        },
+        {
+          name: "prize",
+          description: `give Prize of giveaway`,
+          type: ApplicationCommandOptionType.String,
+          required: true,
+        },
+        {
+          name: "wincount",
+          description: `give Winner Count of giveaway`,
+          type: ApplicationCommandOptionType.String,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "end",
+      description: `end giveaway`,
+      type: ApplicationCommandType.ChatInput,
+      options: [
+        {
+          name: "messageid",
+          description: `give message id of giveaway`,
+          type: ApplicationCommandOptionType.String,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "reroll",
+      description: `reroll giveaway`,
       type: ApplicationCommandType.ChatInput,
       options: [
         {
@@ -106,16 +154,10 @@ client.on("ready", () => {
       type: ApplicationCommandType.ChatInput,
     },
   ];
-  client.application.commands.set(commands);
+  client.application.commands.set([]);
+  client.guilds.cache.get("903532162236694539")?.commands.set(commands);
 
-  mongoose
-    .connect(process.env.mongo, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    })
-    .then(() => {
-      console.log(`Mongodb connected`);
-    });
+  manager.connect(process.env.MONGO_URL);
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -158,10 +200,60 @@ client.on("interactionCreate", async (interaction) => {
       case "delete":
         {
           let messageId = interaction.options.getString("messageid", true);
-          let deleted = await manager.giveaway.delete(messageId);
+          let deleted = await manager.deleteGiveaway(messageId);
           interaction.followUp({
             content: `Giveaway ${deleted ? "Deleted" : "Not Deleted"}`,
           });
+        }
+        break;
+      case "edit":
+        {
+          let messageId = interaction.options.getString("messageid", true);
+          let prize = interaction.options.getString("prize", true);
+          let wincount = interaction.options.getString("wincount", true);
+          let edited = await manager.editGiveaway(messageId, {
+            prize: prize,
+            winCount: wincount,
+          });
+          if (edited) {
+            interaction.followUp({
+              content: `Giveaway Edited`,
+            });
+          } else {
+            interaction.followUp({
+              content: `Invalid Giveaway`,
+            });
+          }
+        }
+        break;
+      case "reroll":
+        {
+          let messageId = interaction.options.getString("messageid", true);
+          let rerolled = await manager.rerollGiveaway(messageId);
+          if (rerolled) {
+            interaction.followUp({
+              content: `Giveaway Rerolled`,
+            });
+          } else {
+            interaction.followUp({
+              content: `Invalid Giveaway`,
+            });
+          }
+        }
+        break;
+      case "end":
+        {
+          let messageId = interaction.options.getString("messageid", true);
+          let ended = await manager.endGiveaway(messageId);
+          if (ended) {
+            interaction.followUp({
+              content: `Giveaway Ended`,
+            });
+          } else {
+            interaction.followUp({
+              content: `Invalid Giveaway`,
+            });
+          }
         }
         break;
       case "ping":
@@ -195,8 +287,7 @@ manager.on("GiveawayWinner", (message, giveaway) => {
   let Gwinners = giveaway.winners
     .map((winner) => `<@${winner.userID}>`)
     .join(", ");
-
-  message.channel.send({
+  message.channel?.send({
     content: Gwinners,
     embeds: [
       embed.setDescription(
@@ -243,7 +334,7 @@ manager.on("UserLeftGiveaway", (member, giveaway) => {
   });
 });
 
-client.login(process.env.token);
+client.login(process.env.TOKEN);
 
 process.on("unhandledRejection", (reason, p) => {
   console.log(" [Error_Handling] :: Unhandled Rejection/Catch");

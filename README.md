@@ -5,9 +5,9 @@ Advance discord giveaways system with Support Slash/Message support
 # Download
 
 ```cli
-npm i git+https://github.com/kabirsingh2004/discord-giveaways
+npm i real-giveaways
 ------ or ---------------------
-yarn add git+https://github.com/kabirsingh2004/discord-giveaways
+yarn add real-giveaways
 ```
 
 # Example
@@ -19,8 +19,8 @@ yarn add git+https://github.com/kabirsingh2004/discord-giveaways
 ### Client values
 
 ```js
-const GiveawaySystem = require("@real/giveaways");
-const { Client, Colors } = require("discord.js");
+const { Client, GatewayIntentBits, Colors } = require("discord.js");
+const { Manager } = require("real-giveaways");
 
 const client = new Client({
   intents: [
@@ -31,17 +31,23 @@ const client = new Client({
   ],
 });
 
-const manager = new GiveawaySystem(client, {
+const manager = new Manager(client, {
   embedColor: Colors.Blurple,
   pingEveryone: false,
   emoji: "🎁",
+});
+
+client.on("ready", () => {
+  console.log(`Bot is Running`);
+  manager.connect("Mongo_Uri");
 });
 ```
 
 ### For custom embed
 
 ```js
-class CustomManager extends GiveawaySystem {
+// for custom embed
+class CustomManager extends Manager {
   GiveawayStartEmbed(giveaway) {
     let embed = new EmbedBuilder().setTitle(`Giveway Started`);
     return embed;
@@ -55,6 +61,12 @@ class CustomManager extends GiveawaySystem {
     return embed;
   }
 }
+
+const manager = new CustomManager(client, {
+  embedColor: Colors.Blurple,
+  pingEveryone: false,
+  emoji: "🎁",
+});
 ```
 
 ### Commands
@@ -100,28 +112,60 @@ client.on("interactionCreate", async (interaction) => {
       case "delete":
         {
           let messageId = interaction.options.getString("messageid", true);
-          let deleted = await manager.giveaway.delete(messageId);
+          let deleted = await manager.deleteGiveaway(messageId);
           interaction.followUp({
             content: `Giveaway ${deleted ? "Deleted" : "Not Deleted"}`,
           });
         }
         break;
-      case "end":
+      case "edit":
         {
           let messageId = interaction.options.getString("messageid", true);
-          let giveaway = await manager.giveaway.end(messageId);
-          interaction.followUp({
-            content: `\`${giveaway.prize}\` Giveaway Ended`,
+          let prize = interaction.options.getString("prize", true);
+          let wincount = interaction.options.getString("wincount", true);
+          let edited = await manager.editGiveaway(messageId, {
+            prize: prize,
+            winCount: wincount,
           });
+          if (edited) {
+            interaction.followUp({
+              content: `Giveaway Edited`,
+            });
+          } else {
+            interaction.followUp({
+              content: `Invalid Giveaway`,
+            });
+          }
         }
         break;
       case "reroll":
         {
           let messageId = interaction.options.getString("messageid", true);
-          let giveaway = await manager.giveaway.reroll(messageId);
-          interaction.followUp({
-            content: `\`${giveaway.prize}\` Giveaway Rerolled`,
-          });
+          let rerolled = await manager.rerollGiveaway(messageId);
+          if (rerolled) {
+            interaction.followUp({
+              content: `Giveaway Rerolled`,
+            });
+          } else {
+            interaction.followUp({
+              content: `Invalid Giveaway`,
+            });
+          }
+        }
+        break;
+      case "end":
+        {
+          let messageId = interaction.options.getString("messageid", true);
+          let ended = await manager.endGiveaway(messageId);
+          if (ended) {
+            interaction.followUp({
+              content: `Giveaway Ended`,
+            });
+          } else {
+            interaction.followUp({
+              content: `Invalid Giveaway`,
+            });
+          }
         }
         break;
       case "ping":
@@ -159,8 +203,7 @@ manager.on("GiveawayWinner", (message, giveaway) => {
   let Gwinners = giveaway.winners
     .map((winner) => `<@${winner.userID}>`)
     .join(", ");
-
-  message.channel.send({
+  message.channel?.send({
     content: Gwinners,
     embeds: [
       embed.setDescription(

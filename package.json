@@ -1,16 +1,38 @@
 {
-  "name": "realgiveaways",
-  "version": "1.0.0",
-  "description": "real giveaway system",
-  "main": "bot.js",
+  "name": "real-giveaways",
+  "version": "1.2.1",
+  "description": "A Advance Discord Giveaway System",
+  "main": "index.js",
+  "types": "./src/types/index.d.ts",
   "scripts": {
     "start": "node ."
   },
+  "keywords": [
+    "discord",
+    "discord.js",
+    "giveaways",
+    "winner",
+    "framework",
+    "bot",
+    "discord-giveaways",
+    "discord giveaways",
+    "giveaway",
+    "interaction",
+    "button",
+    "nodejs",
+    "api",
+    "giveaways",
+    "mongoose"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/kabirsingh2004/discord-giveaways.git"
   },
-  "author": "kabirsingh2004",
+  "bugs": {
+    "url": "https://github.com/kabirsingh2004/discord-giveaways/issues"
+  },
+  "homepage": "https://github.com/kabirsingh2004/discord-giveaways",
+  "author": "KabirSingh2004",
   "license": "ISC",
   "dependencies": {
     "discord.js": "^14.7.1",

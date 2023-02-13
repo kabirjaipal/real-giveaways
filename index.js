@@ -1,3 +1,3 @@
-const GiveawaySystem = require("./src/GiveawaySystem");
+const { Manager } = require("./src/Manager");
 
-module.exports = { GiveawaySystem };
+module.exports = { Manager };
