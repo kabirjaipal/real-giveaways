@@ -283,10 +283,14 @@ manager.on("GiveawayStarted", (message, giveaway) => {
   });
 });
 manager.on("GiveawayWinner", (message, giveaway) => {
-  // console.log("GiveawayWinner");
-  let Gwinners = giveaway.winners
+  let Gwinners
+  if(giveaway.winners.length > 1) {
+    Gwinners = giveaway.winners
     .map((winner) => `<@${winner.userID}>`)
     .join(", ");
+  } else {
+    Gwinners = giveaway.winners[0]
+  }
   message.channel?.send({
     content: Gwinners,
     embeds: [

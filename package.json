@@ -1,6 +1,6 @@
 {
   "name": "real-giveaways",
-  "version": "1.2.1",
+  "version": "1.5.3",
   "description": "A Advance Discord Giveaway System",
   "main": "index.js",
   "types": "./src/types/index.d.ts",
