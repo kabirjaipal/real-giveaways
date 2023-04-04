@@ -199,14 +199,10 @@ manager.on("GiveawayStarted", (message, giveaway) => {
   });
 });
 manager.on("GiveawayWinner", (message, giveaway) => {
-  let Gwinners
-  if(giveaway.winners.length > 0) {
-    Gwinners = giveaway.winners
+  // console.log("GiveawayWinner");
+  let Gwinners = giveaway.winners
     .map((winner) => `<@${winner.userID}>`)
     .join(", ");
-  } else {
-    Gwinners = giveaway.winners[0]
-  }
   message.channel?.send({
     content: Gwinners,
     embeds: [

@@ -1,3 +1,3 @@
-const { Manager } = require("./src/Manager");
+const Manager = require("./src/Manager");
 
 module.exports = { Manager };

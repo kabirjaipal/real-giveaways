@@ -8,48 +8,39 @@ const { Client } = require("discord.js");
  * @returns
  */
 async function fetchGCM(client, giveaways, messageId) {
-  // code
-  let giveaway = giveaways.find((g) => g.messageId === messageId);
+  const giveaway = giveaways.find((g) => g.messageId === messageId);
   if (!giveaway) return;
-  let guild = client.guilds.cache.get(giveaway.guildId);
-  if (!guild) {
-    guild = await client.guilds.fetch(giveaway.guildId).catch((e) => {});
-  }
-  let channel =
-    guild?.channels.cache.get(giveaway.channelId) ||
-    (await guild.channels.fetch(giveaway.channelId).catch((e) => {}));
-  let message =
-    channel?.messages.cache.get(giveaway.messageId) ||
-    (await channel?.messages.fetch(giveaway.messageId).catch((e) => {}));
 
-  // let obj = {};
-  // if (message && channel && guild) {
-  //   obj["message"] = message;
-  //   obj["channel"] = channel;
-  //   obj["guild"] = guild;
-  // } else {
-  //   obj["message"] = {};
-  //   obj["channel"] = {};
-  //   obj["guild"] = {};
-  // }
-  // return obj;
-  return {
-    message,
-    channel,
-    guild,
-  };
+  const guildPromise = client.guilds.fetch(giveaway.guildId).catch(() => null);
+  const channelPromise = guildPromise.then((guild) =>
+    guild?.channels.fetch(giveaway.channelId).catch(() => null)
+  );
+  const messagePromise = channelPromise.then((channel) =>
+    channel?.messages.fetch(giveaway.messageId).catch(() => null)
+  );
+
+  const [guild, channel, message] = await Promise.all([
+    guildPromise,
+    channelPromise,
+    messagePromise,
+  ]);
+
+  return { guild, channel, message };
 }
 
 async function editEmbed(message, giveawaydata, embed) {
-  let channel = message.guild.channels.cache.get(giveawaydata.channelId);
-  if (!channel) return;
-  let msg = await channel.messages.fetch(giveawaydata.messageId);
-  msg
-    .edit({
+  try {
+    let channel = message.guild.channels.cache.get(giveawaydata.channelId);
+    if (!channel) return;
+    let msg = await channel.messages.fetch(giveawaydata.messageId);
+    if (!msg) return;
+    await msg.edit({
       embeds: [embed],
       components: [],
-    })
-    .catch((e) => {});
+    });
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 function createGiveaway(data) {
@@ -69,4 +60,34 @@ function createGiveaway(data) {
   };
 }
 
-module.exports = { fetchGCM, editEmbed, createGiveaway };
+function deepEqual(a, b) {
+  // If a and b are identical, return true
+  if (a === b) return true;
+
+  // If a and b are different types, return false
+  if (typeof a !== typeof b) return false;
+
+  // If a or b is null, return false
+  if (a === null || b === null) return false;
+
+  // If a and b are objects or arrays, recursively compare each property
+  if (typeof a === "object" && typeof b === "object") {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+
+    // If a and b have different number of properties, return false
+    if (aKeys.length !== bKeys.length) return false;
+
+    // Recursively compare each property
+    for (const key of aKeys) {
+      if (!deepEqual(a[key], b[key])) return false;
+    }
+
+    return true;
+  }
+
+  // If a and b are of the same type and not objects or arrays, compare them directly
+  return a === b;
+}
+
+module.exports = { fetchGCM, editEmbed, createGiveaway, deepEqual };

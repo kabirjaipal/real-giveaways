@@ -21,11 +21,11 @@ export interface GiveawayOptions {
   guildId: string;
   prize: string;
   started: string;
-  entry: Array;
+  entry: [];
   entered: number;
   winCount: number;
   endTime: string;
   hostedBy: string;
   ended: boolean;
-  winners: Array;
+  winners: [];
 }

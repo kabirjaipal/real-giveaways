@@ -9,7 +9,12 @@ const {
 const { EventEmitter } = require("node:events");
 const ms = require("ms");
 const GModel = require("./utils/GModel");
-const { fetchGCM, editEmbed, createGiveaway } = require("./utils/functions");
+const {
+  fetchGCM,
+  editEmbed,
+  createGiveaway,
+  deepEqual,
+} = require("./utils/functions");
 const mongoose = require("mongoose");
 const { Giveaway } = require("./Giveaway");
 
@@ -55,19 +60,17 @@ class Manager extends EventEmitter {
     process.setMaxListeners(0);
     await this.client.guilds.fetch();
 
-    setInterval(() => {
-      this.client.guilds.cache.forEach(async (guild) => {
-        if (!guild) return;
-        const db = this.giveaways.filter((g) => g.guildId === guild.id);
-        if (!db) return;
-        db.map(async (data) => {
-          if (!data) return;
-          const { message } = await fetchGCM(
-            this.client,
-            this.giveaways,
-            data.messageId
-          );
-          if (!message) return;
+    setInterval(async () => {
+      for (const guild of this.client.guilds.cache.values()) {
+        const dbPromises = this.giveaways
+          .filter((g) => g.guildId === guild.id)
+          .map((data) => fetchGCM(this.client, this.giveaways, data.messageId));
+        const dbResults = await Promise.all(dbPromises);
+
+        for (const data of dbResults) {
+          if (!data) continue;
+          const { message } = data;
+          if (!message) continue;
           this.giveaway = new Giveaway(this, {
             messageId: data.messageId,
             channelId: data.channelId,
@@ -85,21 +88,23 @@ class Manager extends EventEmitter {
           if (!data.ended) {
             await this.checkWinner(message);
           }
-        });
-      });
+        }
+      }
     }, 5000);
   }
 
   async checkWinner(message) {
     if (!message) return;
-    const data = this.giveaways.find(
+    const index = this.giveaways.findIndex(
       (g) => g.messageId === message.id && g.ended === false
     );
-    if (!data) return;
-    if (data.endTime && Number(data.endTime) < Date.now()) {
-      //  code
-      let winner = await this.getWinner(data.messageId);
-      return winner;
+    if (index === -1) return;
+    const data = this.giveaways[index];
+    const now = Date.now();
+    if (data.endTime && Number(data.endTime) < now) {
+      // code that uses `now` here
+      let winnerPromise = this.getWinner(data.messageId);
+      return winnerPromise;
     }
   }
   /**
@@ -107,42 +112,53 @@ class Manager extends EventEmitter {
    * @param {String} messageID
    */
   async getWinner(messageID) {
-    let data = await GModel.findOne({ messageId: messageID });
-    if (!data) return;
+    const data = await GModel.aggregate([
+      { $match: { messageId: messageID } },
+      { $sample: { size: 1 } },
+    ]);
+    if (!data || !data[0]) return;
     const { message } = await fetchGCM(this.client, this.giveaways, messageID);
     const winArr = [];
-    const winCt = data.winCount;
-    const entries = data.entry;
+    const winCt = data[0].winCount;
+    const entries = data[0].entry;
 
-    for (let i = 0; i < winCt; i++) {
-      const winno = Math.floor(Math.random() * data.entered);
-      if (!winArr.includes(entries[winno])) winArr.push(entries[winno]);
-    }
+    await Promise.all(
+      Array.from({ length: winCt }).map(async () => {
+        while (true) {
+          const winno = Math.floor(Math.random() * data[0].entered);
+          if (!winArr.includes(entries[winno])) {
+            winArr.push(entries[winno]);
+            break;
+          }
+        }
+      })
+    );
 
-    // let winners = winArr;
-    data.winners = winArr;
+    data[0].winners = winArr;
+    data[0].ended = true;
 
-    if (!data) return await message.delete();
-    data.ended = true;
-    await data.save().then(async () => {
-      await this.getGiveaways();
-    });
-    let gData = createGiveaway(data);
-    if (data.entered <= 0 || !winArr[0]) {
-      this.emit("NoWinner", message, gData);
-      let embed = this.GiveawayEndNoWinnerEmbed(gData);
-      await editEmbed(message, data, embed);
-    } else {
+    await GModel.updateOne(
+      { messageId: messageID },
+      { $set: { winners: winArr, ended: true } }
+    );
+
+    await this.getGiveaways();
+
+    const gData = createGiveaway(data[0]);
+    const embed =
+      winArr.length > 0
+        ? this.GiveawayEndWinnerEmbed(gData)
+        : this.GiveawayEndNoWinnerEmbed(gData);
+
+    if (winArr.length > 0) {
       this.emit("GiveawayWinner", message, gData);
-      let embed = this.GiveawayEndWinnerEmbed(gData);
-      await editEmbed(message, data, embed);
+    } else {
+      this.emit("NoWinner", message, gData);
     }
 
-    if (gData) {
-      return gData;
-    } else {
-      return false;
-    }
+    await editEmbed(message, data[0], embed);
+
+    return Promise.resolve(gData);
   }
 
   /**
@@ -150,80 +166,65 @@ class Manager extends EventEmitter {
    * @param {import("discord.js").Interaction} interaction
    */
   async handleInteraction(interaction) {
-    // code
     if (interaction.isButton()) {
-      await interaction?.deferUpdate().catch((e) => {});
       const { member } = interaction;
       if (member.user.bot) return;
-      switch (interaction.customId) {
-        case "join_btn":
-          {
-            const data = await GModel.findOne({
+      if (!interaction.deferred || !interaction.replied) {
+        await interaction?.deferUpdate().catch(() => {});
+      }
+      const data = await GModel.findOne({
+        messageId: interaction.message.id,
+      });
+      if (!data) return;
+      function updateentry(entry) {
+        let embeds = interaction.message.embeds[0];
+        interaction.message.edit({
+          embeds: [
+            EmbedBuilder.from(embeds).setFooter({
+              text: `${entry} Users Joined`,
+            }),
+          ],
+        });
+      }
+      let gData = createGiveaway(data);
+      if (Number(data?.endTime) < Date.now()) {
+        this.emit("InvalidGiveaway", member, gData);
+      } else {
+        const entris = data.entry?.find(
+          (id) => id.userID === interaction.member.id
+        );
+        if (entris) {
+          await GModel.findOneAndUpdate(
+            {
               messageId: interaction.message.id,
-            });
-            if (!data) return;
-            function updateentry(entry) {
-              let embeds = interaction.message.embeds[0];
-              interaction.message.edit({
-                embeds: [
-                  EmbedBuilder.from(embeds).setFooter({
-                    text: `${entry} Users Joined`,
-                    // iconURL: interaction.guild.iconURL(),
-                  }),
-                ],
-              });
+            },
+            {
+              $pull: { entry: { userID: interaction.member.id } },
             }
-            let gData = createGiveaway(data);
-            if (Number(data?.endTime) < Date.now()) {
-              this.emit("InvalidGiveaway", member, gData);
-            } else {
-              const entris = data.entry?.find(
-                (id) => id.userID === interaction.member.id
-              );
-
-              if (entris) {
-                await GModel.findOneAndUpdate(
-                  {
-                    messageId: interaction.message.id,
-                  },
-                  {
-                    $pull: { entry: { userID: interaction.member.id } },
-                  }
-                );
-
-                data.entered = data.entered - 1;
-
-                await data.save().then(async (a) => {
-                  await updateentry(data.entered);
-                  await this.getGiveaways();
-                  let gData = createGiveaway(data);
-                  this.emit("UserLeftGiveaway", member, gData);
-                });
-              } else if (!entris) {
-                data.entry.push({
-                  userID: interaction.member.id,
-                  guildID: interaction.guild.id,
-                  messageID: interaction.message.id,
-                });
-
-                data.entered = data.entered + 1;
-
-                await data.save().then(async (a) => {
-                  await updateentry(data.entered);
-                  await this.getGiveaways();
-                  let gData = createGiveaway(data);
-                  this.emit("UserJoinGiveaway", member, gData);
-                });
-              }
-            }
-          }
-          break;
-
-        default:
-          break;
+          );
+          data.entered = data.entered - 1;
+          await data.save();
+          await updateentry(data.entered);
+          await this.getGiveaways();
+          let gData = createGiveaway(data);
+          this.emit("UserLeftGiveaway", member, gData);
+        } else {
+          data.entry.push({
+            userID: interaction.member.id,
+            guildID: interaction.guild.id,
+            messageID: interaction.message.id,
+          });
+          data.entered = data.entered + 1;
+          await data.save();
+          await updateentry(data.entered);
+          await this.getGiveaways();
+          let gData = createGiveaway(data);
+          this.emit("UserJoinGiveaway", member, gData);
+        }
       }
     }
   }
+
   /**
    *
    * @param {CommandInteraction} interaction
@@ -231,36 +232,40 @@ class Manager extends EventEmitter {
    * @returns
    */
   async start(interaction, options) {
-    return new Promise(async (resolve, reject) => {
-      // code
-      const { channel, duration, prize, winnerCount } = options;
-      const timeStart = Date.now();
-      const endTime = Date.now() + ms(duration);
+    const { channel, duration, prize, winnerCount } = options;
+    const timeStart = Date.now();
+    const endTime = Date.now() + ms(duration);
 
-      const joinBtn = new ButtonBuilder()
-        .setCustomId("join_btn")
-        .setStyle(ButtonStyle.Success)
-        .setEmoji(this.emoji)
-        .setLabel("Join");
+    const joinBtn = new ButtonBuilder()
+      .setCustomId("join_btn")
+      .setStyle(ButtonStyle.Success)
+      .setEmoji(this.emoji)
+      .setLabel("Join");
 
-      const btnRow = new ActionRowBuilder().addComponents([joinBtn]);
+    const btnRow = new ActionRowBuilder().addComponents([joinBtn]);
 
-      let GiveawayEmbed = this.GiveawayStartEmbed({
-        prize: prize,
-        endTime: endTime,
-        hostedBy: interaction.member.id,
-        winCount: winnerCount,
-        started: timeStart,
-        entered: 0,
-      });
+    const GiveawayEmbed = this.GiveawayStartEmbed({
+      prize: prize,
+      endTime: endTime,
+      hostedBy: interaction.member.id,
+      winCount: winnerCount,
+      started: timeStart,
+      entered: 0,
+    });
 
-      let sendOptions = {
-        content: `${this.pingEveryone ? "@everyone" : " "} `,
-        embeds: [GiveawayEmbed],
-        components: [btnRow],
-      };
-      let message = await channel.send(sendOptions).catch((e) => reject(e));
-      let giveawaydata = {
+    const sendOptions = {
+      content: `${this.pingEveryone ? "@everyone" : " "} `,
+      embeds: [GiveawayEmbed],
+      components: [btnRow],
+    };
+
+    // Cache frequently used data
+    const guild = await GModel.findOne({ guildId: interaction.guild.id });
+
+    const message = await channel.send(sendOptions);
+
+    const [giveawaydata] = await Promise.all([
+      this.saveGiveaway({
         messageId: message.id,
         channelId: channel.id,
         guildId: interaction.guild.id,
@@ -273,50 +278,48 @@ class Manager extends EventEmitter {
         hostedBy: interaction.member.id,
         ended: false,
         winners: [],
-      };
-      let data = await this.saveGiveaway(message.id, giveawaydata);
-      this.giveaway = new Giveaway(this, { ...data, message: message });
-      let gData = createGiveaway(data);
-      this.emit("GiveawayStarted", message, gData);
+      }),
+    ]);
+
+    // Reuse the cached guild object instead of querying it again
+    const data = { ...giveawaydata, guild };
+    console.log(data);
+    this.giveaway = new Giveaway(this, { ...data, message: message });
+    const gData = createGiveaway(data);
+
+    this.emit("GiveawayStarted", message, gData);
+
+    // Only call getGiveaways() once if needed
+    if (message) {
       await this.getGiveaways();
-      await this.checkWinner(message);
-    });
+    }
+
+    await this.checkWinner(message);
   }
 
   GiveawayStartEmbed(giveaway) {
-    // code
+    const endTimestamp = (giveaway.endTime / 1000) | 0;
+    const description = `Click on Join Button To Enter in Giveaway`;
+    const prize = `> \`${giveaway.prize}\``;
+    const endsIn = `> <t:${endTimestamp}:R>`;
+    const winners = `> \`${giveaway.winCount}\``;
+    const hostedBy = `> <@${giveaway.hostedBy}>`;
+
     const GiveawayEmbed = new EmbedBuilder()
       .setColor(this.embedColor)
       .setTitle(`Real Giveaways`)
       .setTimestamp(Date.now())
-      .setDescription(`Click on Join Button To Enter in Giveaway`)
+      .setDescription(description)
       .setFooter({
         text: `0 Users Joined`,
       })
       .addFields([
-        {
-          name: `Prize`,
-          value: `> \`${giveaway.prize}\``,
-          inline: true,
-        },
-        {
-          name: `Ends In`,
-          // value: `> <t:${giveaway.endTime}:R>`,
-          value: `> <t:${Math.floor(giveaway.endTime / 1000)}:R>`,
-
-          inline: true,
-        },
-        {
-          name: `Winners`,
-          value: `> \`${giveaway.winCount}\``,
-          inline: true,
-        },
-        {
-          name: `Hosted By`,
-          value: `> <@${giveaway.hostedBy}>`,
-          // inline: true,
-        },
+        { name: `Prize`, value: prize, inline: true },
+        { name: `Ends In`, value: endsIn, inline: true },
+        { name: `Winners`, value: winners, inline: true },
+        { name: `Hosted By`, value: hostedBy },
       ]);
+
     return GiveawayEmbed;
   }
 
@@ -326,7 +329,8 @@ class Manager extends EventEmitter {
    * @returns
    */
   GiveawayEndNoWinnerEmbed(giveaway) {
-    // code
+    const currentTime = Math.floor(Date.now() / 1000);
+
     const GiveawayEmbed = new EmbedBuilder()
       .setColor(this.embedColor)
       .setTitle(`Real Giveaways`)
@@ -338,7 +342,7 @@ class Manager extends EventEmitter {
       .addFields([
         {
           name: `Ended At`,
-          value: `> <t:${Math.floor(Date.now() / 1000)}:R>`,
+          value: `> <t:${currentTime}:R>`,
           inline: true,
         },
         {
@@ -354,29 +358,32 @@ class Manager extends EventEmitter {
       ]);
     return GiveawayEmbed;
   }
+
   /**
    *
    * @param {import("./types").GiveawayOptions} giveaway
    * @returns
    */
   GiveawayEndWinnerEmbed(giveaway) {
-    // code
+    const winners = [];
+    for (let i = 0; i < giveaway.winners.length; i++) {
+      winners.push(`<@${giveaway.winners[i].userID}>`);
+    }
+
+    const currentTime = Date.now();
+
     const GiveawayEmbed = new EmbedBuilder()
       .setColor(this.embedColor)
       .setTitle(`Real Giveaways`)
-      .setTimestamp(Date.now())
-      .setDescription(
-        `Giveaway Ended , ${giveaway.winners
-          .map((u) => `<@${u.userID}>`)
-          .join(", ")} are Winners`
-      )
+      .setTimestamp(currentTime)
+      .setDescription(`Giveaway Ended , ${winners.join(", ")} are Winners`)
       .setFooter({
-        text: `${giveaway.entered} Users Joined`,
+        text: `Total entries: ${giveaway.entered}`,
       })
       .addFields([
         {
           name: `Ended At`,
-          value: `> <t:${Math.floor(Date.now() / 1000)}:R>`,
+          value: `> <t:${Math.floor(currentTime / 1000)}:R>`,
           inline: true,
         },
         {
@@ -390,48 +397,62 @@ class Manager extends EventEmitter {
           inline: true,
         },
       ]);
+
     return GiveawayEmbed;
   }
+
   /**
    * return deleted number count like 1 , 19 , 23
-   * @param {String} guildID
+   * @param {String} guildId
    * @returns
    */
-  async deleteall(guildID) {
-    let giveawaydata = await GModel.find({ guildId: guildID });
+  async deleteall(guildId) {
+    const giveawaydata = await GModel.find({ guildId });
+    const deletePromises = [];
+
     for (const data of giveawaydata) {
       const { message } = await fetchGCM(
         this.client,
         this.giveaways,
         data.messageId
       );
-      if (message?.id) await message.delete().catch((e) => {});
-      await data.delete();
+      if (message?.id) {
+        deletePromises.push(message.delete().catch(() => {}));
+      }
+      deletePromises.push(data.delete());
     }
+
+    await Promise.all(deletePromises);
     await this.getGiveaways();
+
     return { deleted: giveawaydata.length };
   }
 
   async getGiveaways() {
-    const data = await GModel.find();
-    let giveaways = data.map((data) => createGiveaway(data));
+    const cursor = GModel.find().cursor();
+    const giveaways = [];
+    for (
+      let doc = await cursor.next();
+      doc != null;
+      doc = await cursor.next()
+    ) {
+      giveaways.push(createGiveaway(doc.toObject()));
+    }
     this.giveaways = giveaways;
     return this.giveaways;
   }
 
   async deleteGiveaway(messageId) {
-    // code
     const { message, guild } = await fetchGCM(
       this.client,
       this.giveaways,
       messageId
     );
     await message?.delete().catch((e) => {});
-    if (!guild) return;
-    let data = await GModel.deleteOne({ messageId: messageId });
-    if (!data) return false;
-    this.getGiveaways();
-    return true;
+    if (!guild) return false;
+    const result = await GModel.deleteOne({ messageId });
+    await this.getGiveaways();
+    return result.deletedCount > 0;
   }
 
   async endGiveaway(messageId) {
@@ -461,45 +482,123 @@ class Manager extends EventEmitter {
    * @returns
    */
   async editGiveaway(messageId, giveawaydata) {
-    // code
-    await GModel.updateOne(
+    const updated = await GModel.findOneAndUpdate(
       { messageId: messageId, ended: false },
-      giveawaydata
-    ).exec();
-    await this.getGiveaways();
-    const giveaway = this.giveaways.find((g) => g.messageId === messageId);
-    let GiveawayEmbed = this.GiveawayStartEmbed({
-      prize: giveaway.prize,
-      endTime: giveaway.endTime,
-      hostedBy: giveaway.hostedBy,
-      winCount: giveaway.winCount,
-      started: giveaway.started,
-      entered: giveaway.entered,
-    });
+      giveawaydata,
+      { new: true }
+    )
+      .lean()
+      .exec();
 
-    const joinBtn = new ButtonBuilder()
-      .setCustomId("join_btn")
-      .setStyle(ButtonStyle.Success)
-      .setEmoji(this.emoji)
-      .setLabel("Join");
+    if (!updated) {
+      return false;
+    }
 
-    const btnRow = new ActionRowBuilder().addComponents([joinBtn]);
     const { message } = await fetchGCM(this.client, this.giveaways, messageId);
-    await message.edit({
-      content: `${this.pingEveryone ? "@everyone" : " "} `,
-      embeds: [GiveawayEmbed],
-      components: [btnRow],
+
+    // Update message content
+    const newContent = `${this.pingEveryone ? "@everyone" : ""}`;
+    if (message.content !== newContent) {
+      await message.edit({ content: newContent });
+    }
+
+    // Update message embed
+    const existingEmbed = message.embeds[0];
+    const newEmbed = this.GiveawayStartEmbed({
+      prize: updated.prize,
+      endTime: updated.endTime,
+      hostedBy: updated.hostedBy,
+      winCount: updated.winCount,
+      started: updated.started,
+      entered: updated.entered,
     });
-    if (!giveaway) return false;
-    return giveaway;
+
+    if (!deepEqual(existingEmbed.fields, newEmbed.fields)) {
+      await message.edit({ embeds: [newEmbed] });
+    }
+
+    // Update message button components
+    const existingComponents = message.components[0]?.components;
+    const newComponents = [
+      new ButtonBuilder()
+        .setCustomId("join_btn")
+        .setStyle(ButtonStyle.Success)
+        .setEmoji(this.emoji)
+        .setLabel("Join"),
+    ];
+
+    if (!deepEqual(existingComponents, newComponents)) {
+      const btnRow = new ActionRowBuilder().addComponents(newComponents);
+      await message.edit({ components: [btnRow] });
+    }
+
+    return updated;
   }
 
-  async saveGiveaway(messageId, giveawaydata) {
+  async saveGiveaway(giveawaydata) {
     // code
     const DbModel = new GModel(giveawaydata);
     await DbModel.save();
     return createGiveaway(DbModel);
   }
+
+  async pauseGiveaway(messageId) {
+    const giveaway = this.giveaways.find((g) => g.messageId === messageId);
+    if (!giveaway) {
+      throw new Error(`Giveaway with message ID ${messageId} not found.`);
+    }
+
+    if (giveaway.paused) {
+      throw new Error(
+        `Giveaway with message ID ${messageId} is already paused.`
+      );
+    }
+
+    giveaway.paused = true;
+    giveaway.remainingTime = giveaway.endTime - Date.now();
+
+    const data = await GModel.findOneAndUpdate(
+      { messageId },
+      { paused: true, remainingTime: giveaway.remainingTime },
+      { new: true }
+    );
+
+    if (!data) {
+      throw new Error(
+        `Failed to update the paused status for giveaway with message ID ${messageId}.`
+      );
+    }
+
+    return giveaway;
+  }
+
+  async resumeGiveaway(messageId) {
+    const giveaway = this.giveaways.find((g) => g.messageId === messageId);
+    if (!giveaway) {
+      throw new Error(`Giveaway with message ID ${messageId} not found.`);
+    }
+
+    if (!giveaway.paused) {
+      throw new Error(`Giveaway with message ID ${messageId} is not paused.`);
+    }
+
+    giveaway.paused = false;
+    giveaway.endTime = Date.now() + giveaway.remainingTime;
+
+    const data = await GModel.findOneAndUpdate(
+      { messageId },
+      { paused: false, endTime: giveaway.endTime },
+      { new: true }
+    );
+
+    if (!data) {
+      throw new Error(
+        `Failed to update the paused status for giveaway with message ID ${messageId}.`
+      );
+    }
+
+    return giveaway;
+  }
 }
 
-module.exports = { Manager };
+module.exports = Manager;

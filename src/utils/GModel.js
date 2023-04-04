@@ -1,19 +1,22 @@
 const { model, Schema } = require("mongoose");
 
-module.exports = model(
-  "giveaway-schema",
-  new Schema({
+const giveawaySchema = new Schema(
+  {
     messageId: String,
     channelId: String,
-    guildId: String,
+    guildId: { type: String, index: true },
     prize: String,
     started: String,
     entry: Array,
     entered: Number,
     winCount: Number,
-    endTime: String,
+    endTime: { type: Date, index: true },
     hostedBy: String,
-    ended: Boolean,
+    ended: { type: Boolean, index: true },
     winners: Array,
-  })
+    paused: Boolean,
+  },
+  { timestamps: true }
 );
+
+module.exports = model("giveaway", giveawaySchema);
