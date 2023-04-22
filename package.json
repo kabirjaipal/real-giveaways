@@ -1,6 +1,6 @@
 {
   "name": "real-giveaways",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "A Advance Discord Giveaway System",
   "main": "index.js",
   "types": "./src/types/index.d.ts",
@@ -38,7 +38,7 @@
     "discord.js": "^14.9.0",
     "dotenv": "^16.0.3",
     "lodash": "^4.17.21",
-    "mongoose": "^7.0.3",
+    "mongoose": "^6.9.0",
     "ms": "^2.1.3"
   }
 }
