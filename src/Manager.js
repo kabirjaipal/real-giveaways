@@ -46,9 +46,9 @@ class Manager extends EventEmitter {
     });
   }
 
-  async connect(mongouri) {
+  connect(mongouri) {
     if (mongoose.connection.readyState === 1) return;
-    await mongoose.connect(mongouri, {
+    mongoose.connect(mongouri, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
