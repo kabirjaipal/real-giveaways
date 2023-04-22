@@ -50,23 +50,9 @@ class Manager extends EventEmitter {
     if (mongoose.connection.readyState === 1) return;
     await mongoose.connect(mongouri, {
       useNewUrlParser: true,
-      autoIndex: false,
-      connectTimeoutMS: 10000,
-      family: 4,
       useUnifiedTopology: true,
     });
-    mongoose.connection.on('connected', () => {
-      console.log('[giveaway] Mongoose Connected');
-      return mongoose.connection.readyState === 1 ? true : false;
-    });
-    mongoose.connection.on('err', (err) => {
-      console.error(`[giveaway] Mongoose connection error: \n ${err.stack}`);
-      return mongoose.connection.readyState === 1 ? true : false;
-    });
-    mongoose.connection.on('disconnected', () => {
-      console.warn('[giveaway] Mongoose disconnected'.red);
-      return mongoose.connection.readyState === 1 ? true : false;
-    });
+    return mongoose.connection.readyState === 1 ? true : false;
   }
 
   async handleGiveaway() {
