@@ -26,7 +26,7 @@ class Manager extends EventEmitter {
    * @param {Client} client
    * @param {import("./types/index.js").ManagerOptions} options
    */
-  constructor(client, options) {
+  constructor (client, options) {
     super();
     this.client = client;
     this.embedColor = options.embedColor;
@@ -46,13 +46,27 @@ class Manager extends EventEmitter {
     });
   }
 
-  connect(mongouri) {
+  async connect(mongouri) {
     if (mongoose.connection.readyState === 1) return;
-    mongoose.connect(mongouri, {
+    await mongoose.connect(mongouri, {
       useNewUrlParser: true,
+      autoIndex: false,
+      connectTimeoutMS: 10000,
+      family: 4,
       useUnifiedTopology: true,
     });
-    return mongoose.connection.readyState === 1 ? true : false;
+    mongoose.connection.on('connected', () => {
+      console.log('[giveaway] Mongoose Connected');
+      return mongoose.connection.readyState === 1 ? true : false;
+    });
+    mongoose.connection.on('err', (err) => {
+      console.error(`[giveaway] Mongoose connection error: \n ${err.stack}`);
+      return mongoose.connection.readyState === 1 ? true : false;
+    });
+    mongoose.connection.on('disconnected', () => {
+      console.warn('[giveaway] Mongoose disconnected'.red);
+      return mongoose.connection.readyState === 1 ? true : false;
+    });
   }
 
   async handleGiveaway() {
@@ -170,7 +184,7 @@ class Manager extends EventEmitter {
       const { member } = interaction;
       if (member.user.bot) return;
       if (!interaction.deferred || !interaction.replied) {
-        await interaction?.deferUpdate().catch(() => {});
+        await interaction?.deferUpdate().catch(() => { });
       }
       const data = await GModel.findOne({
         messageId: interaction.message.id,
@@ -417,7 +431,7 @@ class Manager extends EventEmitter {
         data.messageId
       );
       if (message?.id) {
-        deletePromises.push(message.delete().catch(() => {}));
+        deletePromises.push(message.delete().catch(() => { }));
       }
       deletePromises.push(data.delete());
     }
@@ -448,7 +462,7 @@ class Manager extends EventEmitter {
       this.giveaways,
       messageId
     );
-    await message?.delete().catch((e) => {});
+    await message?.delete().catch((e) => { });
     if (!guild) return false;
     const result = await GModel.deleteOne({ messageId });
     await this.getGiveaways();
