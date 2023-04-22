@@ -4,7 +4,6 @@ export interface ManagerOptions {
   embedColor: string;
   pingEveryone: boolean;
   emoji: Emoji;
-  mongoose: Object
 }
 
 export interface GiveawayStartOptions {

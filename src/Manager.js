@@ -32,7 +32,6 @@ class Manager extends EventEmitter {
     this.embedColor = options.embedColor;
     this.giveaways = [];
     this.giveaway = null;
-    this.mongoose = options.mongoose
     this.pingEveryone = options.pingEveryone;
     this.emoji = options.emoji || "🎁";
     this.client.on("ready", async () => {
@@ -47,14 +46,14 @@ class Manager extends EventEmitter {
     });
   }
 
-  // connect(mongouri) {
-  //   if (mongoose.connection.readyState === 1) return;
-  //   mongoose.connect(mongouri, {
-  //     useNewUrlParser: true,
-  //     useUnifiedTopology: true,
-  //   });
-  //   return mongoose.connection.readyState === 1 ? true : false;
-  // }
+  connect(mongouri) {
+    if (mongoose.connection.readyState === 1) return;
+    mongoose.connect(mongouri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    return mongoose.connection.readyState === 1 ? true : false;
+  }
 
   async handleGiveaway() {
     // code
