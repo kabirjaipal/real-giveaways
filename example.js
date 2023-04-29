@@ -7,7 +7,6 @@ const {
   Colors,
   EmbedBuilder,
 } = require("discord.js");
-const { Manager } = require("real-giveaways");
 
 const client = new Client({
   intents: [
@@ -17,32 +16,13 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
-
-// // for custom embed
-// class CustomManager extends Manager {
-//   GiveawayStartEmbed(giveaway) {
-//     let embed = new EmbedBuilder().setTitle(`Giveway Started`);
-//     return embed;
-//   }
-//   GiveawayEndNoWinnerEmbed(giveaway) {
-//     let embed = new EmbedBuilder().setTitle(`Giveway Ended No Winner`);
-//     return embed;
-//   }
-//   GiveawayEndWinnerEmbed(giveaway) {
-//     let embed = new EmbedBuilder().setTitle(`Giveway Ended Winners`);
-//     return embed;
-//   }
-// }
-
-// const manager = new CustomManager(client, {
-//   embedColor: Colors.Blurple,
-//   pingEveryone: true,
-// });
-
+const { Manager } = require('./index');
 const manager = new Manager(client, {
   embedColor: Colors.Blurple,
   pingEveryone: false,
   emoji: "🎁",
+  databaseType: 'json', // 'mongo' & 'json'
+  databasePath: './database/giveaways'
 });
 
 client.on("ready", () => {
@@ -144,20 +124,15 @@ client.on("ready", () => {
       ],
     },
     {
-      name: "deleteall",
-      description: `delete all`,
-      type: ApplicationCommandType.ChatInput,
-    },
-    {
       name: "ping",
       description: `check bot ping`,
       type: ApplicationCommandType.ChatInput,
     },
   ];
   client.application.commands.set([]);
-  client.guilds.cache.get("903532162236694539")?.commands.set(commands);
-
-  manager.connect(process.env.MONGO_URL);
+  client.guilds.cache.get("1070015200662663259")?.commands.set(commands);
+  // Only for mongo db usage
+  // manager.connect(process.env.MONGO_URL);
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -187,14 +162,6 @@ client.on("interactionCreate", async (interaction) => {
             .catch((e) => {
               console.log(e);
             });
-        }
-        break;
-      case "deleteall":
-        {
-          const data = await manager.deleteall(interaction.guildId);
-          interaction.followUp({
-            content: `${data?.deleted} Giveaways Deleted`,
-          });
         }
         break;
       case "delete":
@@ -289,10 +256,10 @@ manager.on("GiveawayWinner", (message, giveaway) => {
     .map((winner) => `<@${winner.userID}>`)
     .join(", ");
   } else {
-    Gwinners = giveaway.winners[0]
+    Gwinners = `<@${giveaway.winners[0].userID}>`
   }
   message.channel?.send({
-    content: Gwinners,
+    content: `${Gwinners}`,
     embeds: [
       embed.setDescription(
         `${Gwinners} Won The \`${giveaway.prize}\` Giveaway Prize. Hosted By <@${giveaway.hostedBy}>`

@@ -4,6 +4,8 @@ export interface ManagerOptions {
   embedColor: string;
   pingEveryone: boolean;
   emoji: Emoji;
+  databaseType: 'json' | 'mongo';
+  databasePath: string;
 }
 
 export interface GiveawayStartOptions {
