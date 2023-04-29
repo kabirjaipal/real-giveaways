@@ -17,6 +17,7 @@ const {
 } = require("./utils/functions");
 const mongoose = require("mongoose");
 const { Giveaway } = require("./Giveaway");
+const { JsonDatabase } = require("wio.db");
 
 mongoose.set("strictQuery", false);
 
@@ -34,6 +35,14 @@ class Manager extends EventEmitter {
     this.giveaway = null;
     this.pingEveryone = options.pingEveryone;
     this.emoji = options.emoji || "🎁";
+    this.databaseType = options.databaseType == 'mongo' ? 'mongo' : 'json';
+    this.databasePath = options.databasePath;
+    /**
+     * @type {JsonDatabase}
+     */
+    this.jsonDB = new JsonDatabase({
+        databasePath: this.databasePath
+      });
     this.client.on("ready", async () => {
       await this.getGiveaways().then(() => {
         this.handleGiveaway().then(() => {
@@ -45,7 +54,6 @@ class Manager extends EventEmitter {
       await this.handleInteraction(interaction);
     });
   }
-
   connect(mongouri) {
     if (mongoose.connection.readyState === 1) return;
     mongoose.connect(mongouri, {
@@ -66,7 +74,6 @@ class Manager extends EventEmitter {
           .filter((g) => g.guildId === guild.id)
           .map((data) => fetchGCM(this.client, this.giveaways, data.messageId));
         const dbResults = await Promise.all(dbPromises);
-
         for (const data of dbResults) {
           if (!data) continue;
           const { message } = data;
@@ -90,7 +97,7 @@ class Manager extends EventEmitter {
           }
         }
       }
-    }, 5000);
+    }, 1000);
   }
 
   async checkWinner(message) {
@@ -101,7 +108,7 @@ class Manager extends EventEmitter {
     if (index === -1) return;
     const data = this.giveaways[index];
     const now = Date.now();
-    if (data.endTime && Number(data.endTime) < now) {
+    if (data.endTime && new Date(data.endTime) < now) {
       // code that uses `now` here
       let winnerPromise = this.getWinner(data.messageId);
       return winnerPromise;
@@ -112,10 +119,19 @@ class Manager extends EventEmitter {
    * @param {String} messageID
    */
   async getWinner(messageID) {
-    const data = await GModel.aggregate([
-      { $match: { messageId: messageID } },
-      { $sample: { size: 1 } },
-    ]);
+    let data;
+    let giveaways;
+    let index;
+    if(this.databaseType == 'mongo') {
+      data = await GModel.aggregate([
+        { $match: { messageId: messageID } },
+        { $sample: { size: 1 } },
+      ]);
+    } else {
+      giveaways = Object.values(this.jsonDB.fetch('giveaways')) || [];
+      index = giveaways.findIndex((giveaway) => giveaway.messageId == messageID);
+      data = [giveaways[index], giveaways[index]]
+    }
     if (!data || !data[0]) return;
     const { message } = await fetchGCM(this.client, this.giveaways, messageID);
     const winArr = [];
@@ -134,13 +150,19 @@ class Manager extends EventEmitter {
       })
     );
 
-    data[0].winners = winArr;
-    data[0].ended = true;
-
-    await GModel.updateOne(
-      { messageId: messageID },
-      { $set: { winners: winArr, ended: true } }
-    );
+    
+    if(this.databaseType == 'mongo') {
+      data[0].winners = winArr;
+      data[0].ended = true;
+      await GModel.updateOne(
+        { messageId: messageID },
+        { $set: { winners: winArr, ended: true } }
+      );
+    } else {
+      giveaways[index].ended = true;
+      giveaways[index].winners = winArr;
+      this.jsonDB.set('giveaways', giveaways);
+    }
 
     await this.getGiveaways();
 
@@ -172,9 +194,18 @@ class Manager extends EventEmitter {
       if (!interaction.deferred || !interaction.replied) {
         await interaction?.deferUpdate().catch(() => { });
       }
-      const data = await GModel.findOne({
-        messageId: interaction.message.id,
-      });
+      let data;
+      let giveaways;
+      let index;
+      if(this.databaseType == 'mongo') {
+        data = await GModel.findOne({
+          messageId: interaction.message.id,
+        });
+      } else {
+        giveaways = Object.values(this.jsonDB.fetch('giveaways')) || [];
+        index = giveaways.findIndex((giveaway) => giveaway.messageId == interaction.message.id)
+        data = giveaways[index];
+      }
       if (!data) return;
       function updateentry(entry) {
         let embeds = interaction.message.embeds[0];
@@ -194,16 +225,26 @@ class Manager extends EventEmitter {
           (id) => id.userID === interaction.member.id
         );
         if (entris) {
-          await GModel.findOneAndUpdate(
-            {
-              messageId: interaction.message.id,
-            },
-            {
-              $pull: { entry: { userID: interaction.member.id } },
+          if(this.databaseType == 'mongo') {
+            await GModel.findOneAndUpdate(
+              {
+                messageId: interaction.message.id,
+              },
+              {
+                $pull: { entry: { userID: interaction.member.id } },
+              }
+            );
+            data.entered -= 1;
+            await data.save();
+          } else {
+            let userIndex = data.entry.findIndex((ent) => ent.userID == interaction.member.id);
+            if(userIndex != -1) {
+              data.entry.splice(userIndex, userIndex+1);
+              data.entered -= 1;
+              giveaways[index] = data;
+              this.jsonDB.set('giveaways', giveaways);
             }
-          );
-          data.entered = data.entered - 1;
-          await data.save();
+          }
           await updateentry(data.entered);
           await this.getGiveaways();
           let gData = createGiveaway(data);
@@ -215,7 +256,12 @@ class Manager extends EventEmitter {
             messageID: interaction.message.id,
           });
           data.entered = data.entered + 1;
-          await data.save();
+          if(this.databaseType == 'mongo') {
+            await data.save();
+          } else {
+            giveaways[index] = data;
+            this.jsonDB.set('giveaways', giveaways);
+          }
           await updateentry(data.entered);
           await this.getGiveaways();
           let gData = createGiveaway(data);
@@ -260,7 +306,12 @@ class Manager extends EventEmitter {
     };
 
     // Cache frequently used data
-    const guild = await GModel.findOne({ guildId: interaction.guild.id });
+    let guild;
+    if(this.databaseType == 'mongo') {
+      guild = await GModel.findOne({ guildId: interaction.guild.id });
+    } else {
+      guild = interaction.guild;
+    }
 
     const message = await channel.send(sendOptions);
 
@@ -283,7 +334,6 @@ class Manager extends EventEmitter {
 
     // Reuse the cached guild object instead of querying it again
     const data = { ...giveawaydata, guild };
-    console.log(data);
     this.giveaway = new Giveaway(this, { ...data, message: message });
     const gData = createGiveaway(data);
 
@@ -298,7 +348,7 @@ class Manager extends EventEmitter {
   }
 
   GiveawayStartEmbed(giveaway) {
-    const endTimestamp = (giveaway.endTime / 1000) | 0;
+    const endTimestamp = Math.floor(new Date(giveaway.endTime).getTime() / 1000) | 0;
     const description = `Click on Join Button To Enter in Giveaway`;
     const prize = `> \`${giveaway.prize}\``;
     const endsIn = `> <t:${endTimestamp}:R>`;
@@ -406,37 +456,25 @@ class Manager extends EventEmitter {
    * @param {String} guildId
    * @returns
    */
-  async deleteall(guildId) {
-    const giveawaydata = await GModel.find({ guildId });
-    const deletePromises = [];
-
-    for (const data of giveawaydata) {
-      const { message } = await fetchGCM(
-        this.client,
-        this.giveaways,
-        data.messageId
-      );
-      if (message?.id) {
-        deletePromises.push(message.delete().catch(() => { }));
-      }
-      deletePromises.push(data.delete());
-    }
-
-    await Promise.all(deletePromises);
-    await this.getGiveaways();
-
-    return { deleted: giveawaydata.length };
-  }
 
   async getGiveaways() {
-    const cursor = GModel.find().cursor();
     const giveaways = [];
-    for (
-      let doc = await cursor.next();
-      doc != null;
-      doc = await cursor.next()
-    ) {
-      giveaways.push(createGiveaway(doc.toObject()));
+    if(this.databaseType == 'mongo') {
+      const cursor = GModel.find().cursor();
+      const giveaways = [];
+      for (
+        let doc = await cursor.next();
+        doc != null;
+        doc = await cursor.next()
+      ) {
+        giveaways.push(createGiveaway(doc.toObject()));
+      }
+    } else {
+      let dbGiveaways = this.jsonDB.fetch('giveaways') || [];
+      for(let i = 0; i < dbGiveaways.length; i++) {
+        let doc = dbGiveaways[i];
+        giveaways.push(createGiveaway(doc));
+      }
     }
     this.giveaways = giveaways;
     return this.giveaways;
@@ -450,7 +488,24 @@ class Manager extends EventEmitter {
     );
     await message?.delete().catch((e) => { });
     if (!guild) return false;
-    const result = await GModel.deleteOne({ messageId });
+    let result;
+    if(this.databaseType == 'mongo') {
+      result = await GModel.deleteOne({ messageId });
+    } else {
+      let giveaways = Object.values(this.jsonDB.fetch('giveaways')) || [];
+      let index = giveaways.findIndex(giveaway => giveaway.messageId == messageId);
+      if(index != -1) {
+        giveaways.splice(index, index+1);
+        result = {
+          deletedCount: 1
+        }
+        this.jsonDB.set('giveaways', giveaways);
+      } else {
+        result = {
+          deletedCount: 0
+        }
+      }
+    }
     await this.getGiveaways();
     return result.deletedCount > 0;
   }
@@ -482,13 +537,25 @@ class Manager extends EventEmitter {
    * @returns
    */
   async editGiveaway(messageId, giveawaydata) {
-    const updated = await GModel.findOneAndUpdate(
-      { messageId: messageId, ended: false },
-      giveawaydata,
-      { new: true }
-    )
-      .lean()
-      .exec();
+    let updated;
+    if(this.databaseType == 'mongo') {
+      updated = await GModel.findOneAndUpdate(
+        { messageId: messageId, ended: false },
+        giveawaydata,
+        { new: true }
+      )
+        .lean()
+        .exec();
+    } else {
+      let giveaways = Object.values(this.jsonDB.fetch('giveaways')) || [];
+      let index = giveaways.findIndex(giveaway => giveaway.messageId == messageId);
+      if(index != -1) {
+        giveaways[index].prize = giveawaydata.prize;
+        giveaways[index].winCount = giveawaydata.winCount;
+        this.jsonDB.set('giveaways', giveaways)
+        updated = giveaways[index]
+      } else return false;
+    }
 
     if (!updated) {
       return false;
@@ -537,8 +604,14 @@ class Manager extends EventEmitter {
 
   async saveGiveaway(giveawaydata) {
     // code
-    const DbModel = new GModel(giveawaydata);
-    await DbModel.save();
+    let DbModel;
+    if(this.databaseType == 'mongo') {
+      DbModel = new GModel(giveawaydata);
+      await DbModel.save();
+    } else {
+      DbModel = new GModel(giveawaydata);
+      this.jsonDB.push('giveaways', DbModel);
+    }
     return createGiveaway(DbModel);
   }
 

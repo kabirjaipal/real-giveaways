@@ -1,13 +1,14 @@
 # Real-Giveaway
 
 Advance discord giveaways system with Support Slash/Message support
+(a fork from cactusdev!)
 
 # Download
 
 ```cli
-npm i real-giveaways
+npm i @cactusdev/real-giveaways
 ------ or ---------------------
-yarn add real-giveaways
+yarn add @cactusdev/real-giveaways
 ```
 
 # Example
@@ -35,11 +36,14 @@ const manager = new Manager(client, {
   embedColor: Colors.Blurple,
   pingEveryone: false,
   emoji: "🎁",
+  databaseType: 'json', // 'mongo' & 'json'
+  databasePath: './giveaways'
 });
 
 client.on("ready", () => {
   console.log(`Bot is Running`);
-  manager.connect("Mongo_Uri");
+  // Only for mongo uses
+  // manager.connect("Mongo_Uri");
 });
 ```
 
@@ -99,14 +103,6 @@ client.on("interactionCreate", async (interaction) => {
             .catch((e) => {
               console.log(e);
             });
-        }
-        break;
-      case "deleteall":
-        {
-          const data = await manager.deleteall(interaction.guildId);
-          interaction.followUp({
-            content: `${data?.deleted} Giveaways Deleted`,
-          });
         }
         break;
       case "delete":
