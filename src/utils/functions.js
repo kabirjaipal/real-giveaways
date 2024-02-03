@@ -5,7 +5,7 @@ const { Client } = require("discord.js");
  * @param {Client} client
  * @param {import("../types").GiveawayOptions[]} giveaways
  * @param {String} messageId
- * @returns
+ * @returns {import("../types").fetchGCMReturnType}
  */
 async function fetchGCM(client, giveaways, messageId) {
   const giveaway = giveaways.find((g) => g.messageId === messageId);

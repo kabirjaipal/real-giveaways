@@ -26,69 +26,113 @@ class Manager extends EventEmitter {
    * @param {Client} client
    * @param {import("./types/index.js").ManagerOptions} options
    */
-  constructor (client, options) {
+  constructor(client, options) {
     super();
     this.client = client;
     this.embedColor = options.embedColor;
+    /**
+     * @type {import("./types/index.js").GiveawayOptions[]}
+     */
     this.giveaways = [];
     this.giveaway = null;
     this.pingEveryone = options.pingEveryone;
     this.emoji = options.emoji || "🎁";
+
     this.client.on("ready", async () => {
-      await this.getGiveaways().then(() => {
-        this.handleGiveaway().then(() => {
-          this.emit("GiveawayReady", `Real Giveaways`);
-        });
-      });
+      try {
+        await this.getGiveaways();
+        await this.handleGiveaway();
+        this.emit("GiveawayReady", "Real Giveaways");
+      } catch (error) {
+        console.error("Error in handling giveaways on ready:", error);
+      }
     });
+
     this.client.on("interactionCreate", async (interaction) => {
-      await this.handleInteraction(interaction);
+      try {
+        if (interaction.isButton()) {
+          await interaction.deferUpdate().catch(() => {});
+
+          const { member } = interaction;
+          const messageId = interaction.message.id;
+
+          const data = this.giveaways.find((g) => g.messageId === messageId);
+
+          if (!data) {
+            return console.error(`Invalid giveaway data`);
+          }
+
+          if (Number(data?.endTime) < Date.now()) {
+            this.emit("InvalidGiveaway", member, createGiveaway(data));
+          } else {
+            const userEntry = data.entry?.find(
+              (entry) => entry.userID === member.id
+            );
+
+            if (userEntry) {
+              // User is already entered, remove entry
+              data.entry = data.entry.filter(
+                (entry) => entry.userID !== member.id
+              );
+              data.entered -= 1;
+
+              await this.editGiveaway(messageId, createGiveaway(data));
+              await this.getGiveaways();
+              this.emit("UserLeftGiveaway", member, createGiveaway(data));
+            } else {
+              // User is not entered, add entry
+              data.entry.push({
+                userID: member.id,
+                guildID: interaction.guild.id,
+                messageID: messageId,
+              });
+              data.entered += 1;
+
+              await this.editGiveaway(messageId, createGiveaway(data));
+              await this.getGiveaways();
+              this.emit("UserJoinGiveaway", member, createGiveaway(data));
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error in handling interaction:", error);
+      }
     });
   }
 
   connect(mongouri) {
     if (mongoose.connection.readyState === 1) return;
-    mongoose.connect(mongouri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    mongoose.connect(mongouri);
     return mongoose.connection.readyState === 1 ? true : false;
   }
 
   async handleGiveaway() {
     // code
-    process.setMaxListeners(0);
-    await this.client.guilds.fetch();
-
     setInterval(async () => {
-      for (const guild of this.client.guilds.cache.values()) {
-        const dbPromises = this.giveaways
-          .filter((g) => g.guildId === guild.id)
-          .map((data) => fetchGCM(this.client, this.giveaways, data.messageId));
-        const dbResults = await Promise.all(dbPromises);
+      try {
+        for (const guild of this.client.guilds.cache.values()) {
+          const dbPromises = this.giveaways
+            .filter((g) => g.guildId === guild.id)
+            .map((data) =>
+              fetchGCM(this.client, this.giveaways, data.messageId)
+            );
 
-        for (const data of dbResults) {
-          if (!data) continue;
-          const { message } = data;
-          if (!message) continue;
-          this.giveaway = new Giveaway(this, {
-            messageId: data.messageId,
-            channelId: data.channelId,
-            guildId: data.guildId,
-            prize: data.prize,
-            started: data.started,
-            entry: data.entry,
-            entered: data.entered,
-            winCount: data.winCount,
-            endTime: data.endTime,
-            hostedBy: data.hostedBy,
-            ended: data.ended,
-            message: message,
-          });
-          if (!data.ended) {
-            await this.checkWinner(message);
+          const dbResults = await Promise.all(dbPromises);
+
+          for (const data of dbResults) {
+            if (!data) continue;
+
+            const { message } = data;
+            if (!message) continue;
+
+            this.giveaway = new Giveaway(this, { ...data, message });
+            if (!data.ended) {
+              await this.checkWinner(message);
+            }
           }
         }
+      } catch (error) {
+        console.error("Error in handling giveaways:", error);
       }
     }, 5000);
   }
@@ -101,50 +145,61 @@ class Manager extends EventEmitter {
     if (index === -1) return;
     const data = this.giveaways[index];
     const now = Date.now();
+
     if (data.endTime && Number(data.endTime) < now) {
-      // code that uses `now` here
-      let winnerPromise = this.getWinner(data.messageId);
-      return winnerPromise;
+      // Mark the giveaway as ended before selecting a winner
+      data.ended = true;
+      await this.editGiveaway(data.messageId, data);
+
+      // Check if any user has entered the giveaway
+      if (data.entered > 0) {
+        await this.getWinner(data.messageId);
+      } else {
+        // No user entered, emit the NoWinner event
+        const { message } = await fetchGCM(
+          this.client,
+          this.giveaways,
+          data.messageId
+        );
+        this.emit("NoWinner", message, createGiveaway(data));
+
+        // Update the message and embed for the case of no winner
+        const gData = createGiveaway(data);
+        const embed = this.GiveawayEndNoWinnerEmbed(gData);
+        await editEmbed(message, data, embed);
+      }
+
+      // await this.deleteGiveaway(data.messageId);
     }
   }
+
   /**
-   *
    * @param {String} messageID
    */
   async getWinner(messageID) {
-    const data = await GModel.aggregate([
-      { $match: { messageId: messageID } },
-      { $sample: { size: 1 } },
-    ]);
-    if (!data || !data[0]) return;
+    const data = this.giveaways.find((g) => g.messageId === messageID);
+    if (!data) return [];
+
     const { message } = await fetchGCM(this.client, this.giveaways, messageID);
     const winArr = [];
-    const winCt = data[0].winCount;
-    const entries = data[0].entry;
+    const winCt = data.winCount;
+    const entries = [...data.entry]; // Create a copy to avoid modifying the original array
 
-    await Promise.all(
-      Array.from({ length: winCt }).map(async () => {
-        while (true) {
-          const winno = Math.floor(Math.random() * data[0].entered);
-          if (!winArr.includes(entries[winno])) {
-            winArr.push(entries[winno]);
-            break;
-          }
-        }
-      })
-    );
+    for (let i = 0; i < winCt && entries.length > 0; i++) {
+      const winno = Math.floor(Math.random() * entries.length);
+      const winner = entries[winno];
 
-    data[0].winners = winArr;
-    data[0].ended = true;
+      winArr.push(winner);
+      entries.splice(winno, 1); // Remove the winner from the array
+    }
 
-    await GModel.updateOne(
-      { messageId: messageID },
-      { $set: { winners: winArr, ended: true } }
-    );
+    data.winners = winArr;
+
+    await this.editGiveaway(messageID, { winners: winArr, ended: true });
 
     await this.getGiveaways();
 
-    const gData = createGiveaway(data[0]);
+    const gData = createGiveaway(data);
     const embed =
       winArr.length > 0
         ? this.GiveawayEndWinnerEmbed(gData)
@@ -154,75 +209,11 @@ class Manager extends EventEmitter {
       this.emit("GiveawayWinner", message, gData);
     } else {
       this.emit("NoWinner", message, gData);
+      // Update the message and embed for the case of no winner
+      await editEmbed(message, data, embed);
     }
 
-    await editEmbed(message, data[0], embed);
-
-    return Promise.resolve(gData);
-  }
-
-  /**
-   *
-   * @param {import("discord.js").Interaction} interaction
-   */
-  async handleInteraction(interaction) {
-    if (interaction.isButton()) {
-      const { member } = interaction;
-      if (member.user.bot) return;
-      if (!interaction.deferred || !interaction.replied) {
-        await interaction?.deferUpdate().catch(() => { });
-      }
-      const data = await GModel.findOne({
-        messageId: interaction.message.id,
-      });
-      if (!data) return;
-      function updateentry(entry) {
-        let embeds = interaction.message.embeds[0];
-        interaction.message.edit({
-          embeds: [
-            EmbedBuilder.from(embeds).setFooter({
-              text: `${entry} Users Joined`,
-            }),
-          ],
-        });
-      }
-      let gData = createGiveaway(data);
-      if (Number(data?.endTime) < Date.now()) {
-        this.emit("InvalidGiveaway", member, gData);
-      } else {
-        const entris = data.entry?.find(
-          (id) => id.userID === interaction.member.id
-        );
-        if (entris) {
-          await GModel.findOneAndUpdate(
-            {
-              messageId: interaction.message.id,
-            },
-            {
-              $pull: { entry: { userID: interaction.member.id } },
-            }
-          );
-          data.entered = data.entered - 1;
-          await data.save();
-          await updateentry(data.entered);
-          await this.getGiveaways();
-          let gData = createGiveaway(data);
-          this.emit("UserLeftGiveaway", member, gData);
-        } else {
-          data.entry.push({
-            userID: interaction.member.id,
-            guildID: interaction.guild.id,
-            messageID: interaction.message.id,
-          });
-          data.entered = data.entered + 1;
-          await data.save();
-          await updateentry(data.entered);
-          await this.getGiveaways();
-          let gData = createGiveaway(data);
-          this.emit("UserJoinGiveaway", member, gData);
-        }
-      }
-    }
+    return Promise.resolve(winArr);
   }
 
   /**
@@ -259,9 +250,6 @@ class Manager extends EventEmitter {
       components: [btnRow],
     };
 
-    // Cache frequently used data
-    const guild = await GModel.findOne({ guildId: interaction.guild.id });
-
     const message = await channel.send(sendOptions);
 
     const [giveawaydata] = await Promise.all([
@@ -282,19 +270,14 @@ class Manager extends EventEmitter {
     ]);
 
     // Reuse the cached guild object instead of querying it again
-    const data = { ...giveawaydata, guild };
-    console.log(data);
+    const data = { ...giveawaydata };
     this.giveaway = new Giveaway(this, { ...data, message: message });
     const gData = createGiveaway(data);
 
     this.emit("GiveawayStarted", message, gData);
 
-    // Only call getGiveaways() once if needed
-    if (message) {
-      await this.getGiveaways();
-    }
-
-    await this.checkWinner(message);
+    await this.getGiveaways();
+    // await this.checkWinner(message);
   }
 
   GiveawayStartEmbed(giveaway) {
@@ -311,7 +294,7 @@ class Manager extends EventEmitter {
       .setTimestamp(Date.now())
       .setDescription(description)
       .setFooter({
-        text: `0 Users Joined`,
+        text: `${giveaway.entered || 0} Users Joined`,
       })
       .addFields([
         { name: `Prize`, value: prize, inline: true },
@@ -401,60 +384,6 @@ class Manager extends EventEmitter {
     return GiveawayEmbed;
   }
 
-  /**
-   * return deleted number count like 1 , 19 , 23
-   * @param {String} guildId
-   * @returns
-   */
-  async deleteall(guildId) {
-    const giveawaydata = await GModel.find({ guildId });
-    const deletePromises = [];
-
-    for (const data of giveawaydata) {
-      const { message } = await fetchGCM(
-        this.client,
-        this.giveaways,
-        data.messageId
-      );
-      if (message?.id) {
-        deletePromises.push(message.delete().catch(() => { }));
-      }
-      deletePromises.push(data.delete());
-    }
-
-    await Promise.all(deletePromises);
-    await this.getGiveaways();
-
-    return { deleted: giveawaydata.length };
-  }
-
-  async getGiveaways() {
-    const cursor = GModel.find().cursor();
-    const giveaways = [];
-    for (
-      let doc = await cursor.next();
-      doc != null;
-      doc = await cursor.next()
-    ) {
-      giveaways.push(createGiveaway(doc.toObject()));
-    }
-    this.giveaways = giveaways;
-    return this.giveaways;
-  }
-
-  async deleteGiveaway(messageId) {
-    const { message, guild } = await fetchGCM(
-      this.client,
-      this.giveaways,
-      messageId
-    );
-    await message?.delete().catch((e) => { });
-    if (!guild) return false;
-    const result = await GModel.deleteOne({ messageId });
-    await this.getGiveaways();
-    return result.deletedCount > 0;
-  }
-
   async endGiveaway(messageId) {
     // code
     const gdata = this.giveaways.find((g) => g.messageId == messageId);
@@ -475,26 +404,54 @@ class Manager extends EventEmitter {
     }
   }
 
-  /**
-   *
-   * @param {String} messageId
-   * @param {import("./types/index.js").GiveawayOptions} giveawaydata
-   * @returns
-   */
-  async editGiveaway(messageId, giveawaydata) {
-    const updated = await GModel.findOneAndUpdate(
-      { messageId: messageId, ended: false },
-      giveawaydata,
-      { new: true }
-    )
-      .lean()
-      .exec();
-
-    if (!updated) {
-      return false;
+  async pauseGiveaway(messageId) {
+    const giveaway = this.giveaways.find((g) => g.messageId === messageId);
+    if (!giveaway) {
+      throw new Error(`Giveaway with message ID ${messageId} not found.`);
     }
 
-    const { message } = await fetchGCM(this.client, this.giveaways, messageId);
+    if (giveaway.paused) {
+      throw new Error(
+        `Giveaway with message ID ${messageId} is already paused.`
+      );
+    }
+
+    giveaway.paused = true;
+    giveaway.remainingTime = giveaway.endTime - Date.now();
+
+    await this.editGiveaway(messageId, giveaway);
+
+    return giveaway;
+  }
+
+  async resumeGiveaway(messageId) {
+    const giveaway = this.giveaways.find((g) => g.messageId === messageId);
+    if (!giveaway) {
+      throw new Error(`Giveaway with message ID ${messageId} not found.`);
+    }
+
+    if (!giveaway.paused) {
+      throw new Error(`Giveaway with message ID ${messageId} is not paused.`);
+    }
+
+    giveaway.paused = false;
+    giveaway.endTime = Date.now() + giveaway.remainingTime;
+
+    await this.editGiveaway(messageId, giveaway);
+
+    return giveaway;
+  }
+
+  /**
+   *
+   * @param {import("./types/index.js").GiveawayOptions} giveaway
+   */
+  async updateGiveaway(giveaway) {
+    const { message } = await fetchGCM(
+      this.client,
+      this.giveaways,
+      giveaway.messageId
+    );
 
     // Update message content
     const newContent = `${this.pingEveryone ? "@everyone" : ""}`;
@@ -505,12 +462,12 @@ class Manager extends EventEmitter {
     // Update message embed
     const existingEmbed = message.embeds[0];
     const newEmbed = this.GiveawayStartEmbed({
-      prize: updated.prize,
-      endTime: updated.endTime,
-      hostedBy: updated.hostedBy,
-      winCount: updated.winCount,
-      started: updated.started,
-      entered: updated.entered,
+      prize: giveaway.prize,
+      endTime: giveaway.endTime,
+      hostedBy: giveaway.hostedBy,
+      winCount: giveaway.winCount,
+      started: giveaway.started,
+      entered: giveaway.entered,
     });
 
     if (!deepEqual(existingEmbed.fields, newEmbed.fields)) {
@@ -531,10 +488,9 @@ class Manager extends EventEmitter {
       const btnRow = new ActionRowBuilder().addComponents(newComponents);
       await message.edit({ components: [btnRow] });
     }
-
-    return updated;
   }
 
+  // database
   async saveGiveaway(giveawaydata) {
     // code
     const DbModel = new GModel(giveawaydata);
@@ -542,62 +498,59 @@ class Manager extends EventEmitter {
     return createGiveaway(DbModel);
   }
 
-  async pauseGiveaway(messageId) {
-    const giveaway = this.giveaways.find((g) => g.messageId === messageId);
-    if (!giveaway) {
-      throw new Error(`Giveaway with message ID ${messageId} not found.`);
-    }
-
-    if (giveaway.paused) {
-      throw new Error(
-        `Giveaway with message ID ${messageId} is already paused.`
-      );
-    }
-
-    giveaway.paused = true;
-    giveaway.remainingTime = giveaway.endTime - Date.now();
-
+  /**
+   *
+   * @param {String} messageId
+   * @param {import("./types/index.js").GiveawayOptions} giveawaydata
+   * @returns
+   */
+  async editGiveaway(messageId, giveawaydata) {
     const data = await GModel.findOneAndUpdate(
-      { messageId },
-      { paused: true, remainingTime: giveaway.remainingTime },
+      { messageId: messageId, ended: false },
+      giveawaydata,
       { new: true }
-    );
+    )
+      .lean()
+      .exec();
 
-    if (!data) {
-      throw new Error(
-        `Failed to update the paused status for giveaway with message ID ${messageId}.`
-      );
-    }
+    if (!data) return false;
 
-    return giveaway;
+    this.updateGiveaway(data);
+
+    return data;
   }
 
-  async resumeGiveaway(messageId) {
-    const giveaway = this.giveaways.find((g) => g.messageId === messageId);
-    if (!giveaway) {
-      throw new Error(`Giveaway with message ID ${messageId} not found.`);
-    }
+  async getGiveaways() {
+    const giveawayDocs = await GModel.find().lean();
+    this.giveaways = giveawayDocs.map((doc) => createGiveaway(doc));
 
-    if (!giveaway.paused) {
-      throw new Error(`Giveaway with message ID ${messageId} is not paused.`);
-    }
+    return this.giveaways;
+  }
 
-    giveaway.paused = false;
-    giveaway.endTime = Date.now() + giveaway.remainingTime;
-
-    const data = await GModel.findOneAndUpdate(
-      { messageId },
-      { paused: false, endTime: giveaway.endTime },
-      { new: true }
+  async deleteGiveaway(messageId) {
+    const { message, guild } = await fetchGCM(
+      this.client,
+      this.giveaways,
+      messageId
     );
+    await message?.delete().catch((e) => {});
+    if (!guild) return false;
+    const result = await GModel.deleteOne({ messageId });
+    await this.getGiveaways();
+    return result.deletedCount > 0;
+  }
 
-    if (!data) {
-      throw new Error(
-        `Failed to update the paused status for giveaway with message ID ${messageId}.`
-      );
-    }
+  /**
+   * return deleted number count like 1 , 19 , 23
+   * @param {String} guildId
+   * @returns
+   */
+  async deleteall(guildId) {
+    let data = await GModel.deleteMany({ guildId: guildId });
 
-    return giveaway;
+    await this.getGiveaways();
+
+    return data.deletedCount > 0;
   }
 }
 

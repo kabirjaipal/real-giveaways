@@ -7,7 +7,7 @@ const {
   Colors,
   EmbedBuilder,
 } = require("discord.js");
-const { Manager } = require("real-giveaways");
+const { Manager } = require("./index");
 
 const client = new Client({
   intents: [
@@ -46,7 +46,7 @@ const manager = new Manager(client, {
 });
 
 client.on("ready", () => {
-  console.log("Online");
+  console.log("bot is ready !!");
   const commands = [
     {
       name: "delete",
@@ -154,10 +154,11 @@ client.on("ready", () => {
       type: ApplicationCommandType.ChatInput,
     },
   ];
-  client.application.commands.set([]);
   client.guilds.cache.get("903532162236694539")?.commands.set(commands);
 
-  manager.connect(process.env.MONGO_URL);
+  manager.connect(
+    "mongodb+srv://tofey16500:kabir315116@cluster0.l5qyqoq.mongodb.net/giveaways"
+  );
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -276,23 +277,27 @@ let embed = new EmbedBuilder().setColor("Blurple");
 manager.on("GiveawayReady", (name) => {
   console.log(`${name} is Ready`);
 });
-manager.on("GiveawayStarted", (message, giveaway) => {
-  // console.log("GiveawayStarted");
-  message.reply({
-    embeds: [embed.setDescription(`Giveaway Started`)],
-  });
-});
+
+// manager.on("GiveawayStarted", (message, giveaway) => {
+//   // console.log("GiveawayStarted");
+//   message
+//     .reply({
+//       embeds: [embed.setDescription(`Giveaway Started`)],
+//     })
+//     .then((msg) => {
+//       setTimeout(() => {
+//         msg.delete().catch((e) => {});
+//       }, 3000);
+//     });
+// });
+
 manager.on("GiveawayWinner", (message, giveaway) => {
-  let Gwinners
-  if(giveaway.winners.length > 1) {
-    Gwinners = giveaway.winners
+  let Gwinners = giveaway.winners
     .map((winner) => `<@${winner.userID}>`)
     .join(", ");
-  } else {
-    Gwinners = giveaway.winners[0]
-  }
+
   message.channel?.send({
-    content: Gwinners,
+    content: `${Gwinners}`,
     embeds: [
       embed.setDescription(
         `${Gwinners} Won The \`${giveaway.prize}\` Giveaway Prize. Hosted By <@${giveaway.hostedBy}>`
@@ -311,6 +316,7 @@ manager.on("GiveawayWinner", (message, giveaway) => {
     });
   });
 });
+
 manager.on("GiveawayRerolled", (message, giveaway) => {
   // console.log("GiveawayRerolled");
   message.reply({
@@ -338,7 +344,9 @@ manager.on("UserLeftGiveaway", (member, giveaway) => {
   });
 });
 
-client.login(process.env.TOKEN);
+client.login(
+  "MTEzMjEyNDk4MjgwNjMzNTUxOA.Gb6Tha.Zh--HNmVZwDXo3bA3WYBBV7tyKEsRWs9LW9Ym8"
+);
 
 process.on("unhandledRejection", (reason, p) => {
   console.log(" [Error_Handling] :: Unhandled Rejection/Catch");

@@ -6,40 +6,23 @@ class Giveaway {
    * @param {Manager} manager
    * @param {import("./types").GiveawayOptions} options
    */
-  constructor(
-    manager,
-    {
-      messageId,
-      endTime,
-      ended,
-      entered,
-      entry,
-      guildId,
-      channelId,
-      hostedBy,
-      prize,
-      started,
-      winCount,
-      message,
-      winners,
-    }
-  ) {
+  constructor(manager, options) {
     this.manager = manager;
-    this.messageId = messageId;
-    this.endTime = new Date(endTime);
-    this.ended = ended;
-    this.entered = entered;
-    this.entry = entry;
-    this.guildId = guildId;
-    this.channelId = channelId;
-    this.hostedBy = hostedBy;
-    this.prize = prize;
-    this.started = new Date(started);
-    this.winCount = winCount;
-    this.message = message;
-    this.winners = winners;
-    this.guild = manager.client.guilds.cache.get(guildId);
-    this.channel = this.guild?.channels.cache.get(channelId);
+    this.messageId = options.messageId;
+    this.endTime = new Date(options.endTime);
+    this.ended = options.ended;
+    this.entered = options.entered;
+    this.entry = options.entry;
+    this.guildId = options.guildId;
+    this.channelId = options.channelId;
+    this.hostedBy = options.hostedBy;
+    this.prize = options.prize;
+    this.started = new Date(options.started);
+    this.winCount = options.winCount;
+    this.message = options.message;
+    this.winners = options.winners;
+    this.guild = manager.client.guilds.cache.get(options.guildId);
+    this.channel = this.guild?.channels.cache.get(options.channelId);
   }
 
   get getUrl() {
